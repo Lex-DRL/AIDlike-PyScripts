@@ -35,6 +35,7 @@ class StoriesDatabase(_t.Dict[str, StoryVariants]):
 	are provided with the same name. You can remove all the duplicates later.
 	"""
 
+	print_progress = True
 	root_dir = Path(__file__).parent
 	src_dir = root_dir / '_src'
 	out_file = root_dir / 'Combined.txt'
@@ -73,6 +74,15 @@ class StoriesDatabase(_t.Dict[str, StoryVariants]):
 
 		Returns the total number of stories/variants extracted.
 		"""
+		if self.print_progress:
+			if not file_path:
+				print('\tNo file path given!')
+			else:
+				print('\t{}'.format(file_path))
+
+		if not file_path:
+			return 0
+
 		with file_path.open('rt', encoding='UTF-8') as f:
 			file_lines = f.readlines()
 
@@ -144,17 +154,32 @@ class StoriesDatabase(_t.Dict[str, StoryVariants]):
 		}
 		if not ext_set:
 			ext_set = {'.txt', }
-		return sum(
-			self.parse_file(path) for path in file_paths
+
+		file_paths = (
+			path for path in file_paths
 			if path.is_file() and path.suffix.lower() in ext_set
 		)
+		if self.print_progress:
+			file_paths = list(file_paths)
+			if not file_paths:
+				print('\tNo valid file paths!')
+
+		return sum(map(self.parse_file, file_paths))
 
 	def parse_dir(self, dir_path: Path = None):
 		if not dir_path:
 			dir_path = self.src_dir
 		if not dir_path.exists():
+			if self.print_progress:
+				print(
+					'Creating an empty directory for source text files: '
+					'{}'.format(dir_path)
+				)
 			dir_path.mkdir(parents=True)
+			return 0
 		assert dir_path.is_dir(), "Given path is not a directory"
+		if self.print_progress:
+			print('Reading all the text files from dir: {}'.format(dir_path))
 		return self.parse_files(dir_path.iterdir())
 
 	def remove_duplicates(self):
@@ -246,7 +271,13 @@ class StoriesDatabase(_t.Dict[str, StoryVariants]):
 			out_file = self.out_file
 
 		if not self:
-			return  # don't overwrite a file if the current DB is empty
+			# don't overwrite a file if the current DB is empty
+			if self.print_progress:
+				print('No stories parsed, skipping file output.')
+			return
+
+		if self.print_progress:
+			print('Saving to a single file with no duplicates: {}'.format(out_file))
 
 		with out_file.open('wt', encoding='UTF-8', newline='\n') as f:
 			f.writelines(ln + '\n' for ln in self.combined_text())
@@ -254,9 +285,7 @@ class StoriesDatabase(_t.Dict[str, StoryVariants]):
 
 if __name__ == '__main__':
 	db = StoriesDatabase()
-	print('Reading all the text files from dir: {}'.format(db.src_dir))
 	db.parse_dir()
-	print('Saving to a single file with no duplicates: {}'.format(db.out_file))
 	db.save_out_file()
 	print('Done.')
 	input()
