@@ -12,6 +12,7 @@ from itertools import chain
 
 
 TextLines = _t.List[str]
+TextLinesIter = _t.Iterable[str]
 StoryVariants = _t.List[TextLines]
 
 
@@ -47,6 +48,82 @@ class StoriesDatabase(_t.Dict[str, StoryVariants]):
 		'\\s*<link\\s+rel\\s*='
 	)
 
+	# replace HTML char-codes to actual chars:
+	html_chars_replace = True
+	html_chars_map: _t.List[_t.Tuple[str, str]] = [
+		# ASCII:
+		('&amp;', '&'),
+		('&nbsp;', ' '),
+		('&times;', '*'),
+		('&divide;', '/'),
+		('&lt;', '<'),
+		('&gt;', '>'),
+
+		# various quotes:
+		('&quot;', '"'),
+		('&lsquo;', '"'),
+		('&rsquo;', '"'),
+		('&ldquo;', '"'),
+		('&rdquo;', '"'),
+		('&bdquo;', '"'),
+		('&laquo;', '"'),
+		('&raquo;', '"'),
+
+		('&prime;', "'"),
+		('&Prime;', "''"),
+		('&sbquo;', ','),
+
+		# "nice" punctuation:
+		('&ndash;', '-'),
+		('&mdash;', '-'),
+		('&hellip;', '...'),
+
+		# upper script marks:
+		('&copy;', '©'),
+		('&reg;', '®'),
+		('&trade;', '™'),
+		('&deg;', '°'),
+	]
+
+	# In order to detect identical stories, their lines are pre-cleaned-up.
+	# This list defines these replacements performed in this specific order.
+	# The third argument specifies whether the given replacement needs to be
+	# performed in a loop, until no pattern occurrence found.
+	story_id_cleanup = [
+		# pattern, replacement, do_in_loop:
+		('\t', ' ', False),
+
+		('[', '(', False),
+		('{', '(', False),
+		('<', '(', False),
+		(']', ')', False),
+		('}', ')', False),
+		('>', ')', False),
+
+		(_re.compile('\\(\\s+'), '(', False),
+		(_re.compile('\\s+\\)'), ')', False),
+		('(', ' (', False),
+		(')', ') ', False),
+
+		(_re.compile('\\s+-'), ' - ', False),
+		(_re.compile('\\s*-\\s+'), ' - ', False),
+		(_re.compile('\\s+,'), ',', False),
+		(_re.compile(',\\s*'), ', ', False),
+		(_re.compile('\\s+\\.'), '.', False),
+
+		(_re.compile('\\?{2,}'), '?', False),
+		(_re.compile('![1!]+'), '!', False),
+		(_re.compile('[?!]{2,}'), '?!', False),
+
+		('`', "'", False),
+		(_re.compile("'{2,}"), '"', False),
+		# any combination of various quotes in a row:
+		(_re.compile("[\"']*(?:'+\"+|\"+'+)[\"']*"), '"', False),
+		(_re.compile('"{3,}'), '""', False),
+
+		(_re.compile('\\s{2,}'), ' ', False),
+	]
+
 	story_name_pattern = _re.compile(
 		'\\s*-{3,}[-\\s]*'
 		'([^\\s-].*?)'
@@ -74,26 +151,10 @@ class StoriesDatabase(_t.Dict[str, StoryVariants]):
 		variants.append(cur_variant)
 		return cur_variant
 
-	def parse_file(self, file_path: Path):
-		"""
-		Reads the entire file contents and classifies it
-		to individual stories (variants).
+	def parse_text(self, text_lines: TextLines):
+		"""Parse a chunk of text for individual stories and append them."""
 
-		Returns the total number of stories/variants extracted.
-		"""
-		if self.print_progress:
-			if not file_path:
-				print('\tNo file path given!')
-			else:
-				print('\t{}'.format(file_path))
-
-		if not file_path:
-			return 0
-
-		with file_path.open('rt', encoding='UTF-8') as f:
-			file_lines = f.readlines()
-
-		if not file_lines:
+		if not text_lines:
 			return 0
 
 		def remove_trailing_empty_lines(story: TextLines):
@@ -112,7 +173,7 @@ class StoriesDatabase(_t.Dict[str, StoryVariants]):
 		no_lines_in_story_yet = True
 		n_vars_total = 0
 
-		for line in file_lines:
+		for line in text_lines:
 			line = line.strip()
 			name_match = story_name_matcher(line)
 			if name_match or not_in_story_yet:
@@ -144,6 +205,26 @@ class StoriesDatabase(_t.Dict[str, StoryVariants]):
 			remove_trailing_empty_lines(cur_story_variant)
 
 		return n_vars_total
+
+	def parse_file(self, file_path: Path):
+		"""
+		Reads the entire file contents and classifies it
+		to individual stories (variants).
+
+		Returns the total number of stories/variants extracted.
+		"""
+		if self.print_progress:
+			if not file_path:
+				print('\tNo file path given!')
+			else:
+				print('\t{}'.format(file_path))
+
+		if not file_path:
+			return 0
+
+		with file_path.open('rt', encoding='UTF-8') as f:
+			file_lines = f.readlines()
+		return self.parse_text(file_lines)
 
 	def parse_files(self, file_paths: _t.Iterable[Path], ext=None):
 		"""
@@ -194,26 +275,110 @@ class StoriesDatabase(_t.Dict[str, StoryVariants]):
 		matcher = self.code_pattern.match
 		return any(matcher(line) for line in story)
 
-	def remove_duplicates(self):
+	def cleanup_stories(self):
 		"""
-		Keep only a single instance of all the variants and remove all empty stories.
+		Clean all the stories variants:
+			* Keep only a single instance if a story has multiple identical variants.
+			* Replace HTML special character codes to the actual characters.
+			* Remove any leading/trailing whitespaces.
+			* Remove all empty variants and stories with no variants left.
+
+		This cleanup is NOT a replacement for a regular data preparation,
+		it's only a last resort to fix some tiny issues. If the source text completely
+		messed up, you better of cleaning it yourself before passing it to this class.
 		"""
-		def story_identifier_key(story_variant: TextLines):
+
+		def key_line_replacer_f(*args):
+			"""
+			A factory that returns a function that performs a specific replacement
+			on a single key line, or None if wrong arguments are given.
+			Args are story_id_cleanup items.
+			"""
+			n = len(args)
+			if n < 1:
+				return None
+
+			pattern: _t.Union[_t.Pattern, str] = args[0]
+			repl: str = '' if n < 2 else args[1]
+			do_loop: bool = False if n < 3 else args[2]
+
+			# simple case: basic string replacement
+			if isinstance(pattern, str):
+				def simple_no_loop(line: str):
+					return line.replace(pattern, repl)
+
+				def simple_with_loop(line: str):
+					while pattern in line:
+						line = line.replace(pattern, repl)
+					return line
+
+				return simple_with_loop if do_loop else simple_no_loop
+
+			# complex case - regex:
+			try:
+				sub = pattern.sub
+			except:
+				return None
+
+			def re_no_loop(line: str):
+				return sub(repl, line)
+
+			def re_with_loop(line: str):
+				prev_line = ''
+				while prev_line != line:
+					prev_line = line
+					line = sub(repl, line)
+				return line
+
+			return re_with_loop if do_loop else re_no_loop
+
+		def story_identifier_key(story_variant: TextLinesIter):
 			"""
 			Hashable text of the whole story, without any empty lines or
 			leading/trailing whitespaces.
 			"""
-			return tuple(
-				line for line in story_variant
-				if line.strip()
-			)
+			for cleanup_args in self.story_id_cleanup:
+				replacer_f = key_line_replacer_f(*cleanup_args)
+				if replacer_f is None:
+					continue
+				story_variant = map(replacer_f, story_variant)
+
+			return tuple(filter(None, story_variant))
+
+		def replace_html_chars_single_line_dec(do_replace: bool):
+			"""
+			Conditionally add html-chars replacement after the main cleanup func.
+			"""
+			def decorator(f: _t.Callable[[str], str]):
+				# cache as tuple of tuples - for some perf optimization
+				html_chars_map: _t.Tuple[_t.Tuple[str, str], ...] = tuple(
+					(src, repl)
+					for src, repl, *buffer in self.html_chars_map
+				)
+
+				def wrapper(line: str):
+					line = f(line)
+					for char_code, out_char in html_chars_map:
+						line = line.replace(char_code, out_char)
+					return line
+
+				return wrapper if do_replace else f
+			return decorator
+
+		@replace_html_chars_single_line_dec(self.html_chars_replace)
+		def cleanup_single_line(line: str):
+			return line.strip()
 
 		empty_story_key = tuple()
 
 		for story_variants in self.values():
+			story_variants_clean = tuple(
+				[cleanup_single_line(ln) for ln in variant_text]
+				for variant_text in story_variants
+			)
 			unique_variants_dict: _t.Dict[_t.Tuple[str, ...], int] = {
-				story_identifier_key(story_variants[i]): i
-				for i in reversed_int_indices(len(story_variants))
+				story_identifier_key(story_variants_clean[i]): i
+				for i in reversed_int_indices(len(story_variants_clean))
 				# we need to iterate variants ^ in reversed order to keep the first
 				# duplicates, not the last ones
 			}
@@ -221,21 +386,35 @@ class StoriesDatabase(_t.Dict[str, StoryVariants]):
 				unique_variants_dict.pop(empty_story_key)
 
 			if self.remove_code:
-				for story_tuple in list(unique_variants_dict.keys()):
-					if self.is_code_story(story_tuple):
-						unique_variants_dict.pop(story_tuple)
+				for story_id_tuple in list(unique_variants_dict.keys()):
+					story_i = unique_variants_dict[story_id_tuple]
+					# The id-tuple may be cleaned up 'too much', containing some
+					# messed-up brackets, so we need to check the actual clean story,
+					# not id-tuple:
+					if self.is_code_story(story_variants_clean[story_i]):
+						unique_variants_dict.pop(story_id_tuple)
 
-			if len(story_variants) == len(unique_variants_dict):
+			if len(story_variants_clean) == len(unique_variants_dict):
 				continue
+
+			id_to_unique_text_tuple_map: _t.Dict[int, _t.Tuple[str, ...]] = {
+				i: id_tuple for id_tuple, i in unique_variants_dict.items()
+			}
 			story_variants[:] = (
-				story_variants[var_i]
-				for var_i in sorted(unique_variants_dict.values())
-				if any(line.strip() for line in story_variants[var_i])
+				story_variants_clean[var_i]
+				for var_i, text_tuple in sorted(id_to_unique_text_tuple_map.items())
+				if any(line for line in text_tuple)
 			)
 
 		# we have removed all the empty variants. Now, let's also remove all the
 		# stories with no variants left there:
 		for story_name in list(self.keys()):
+			# we need to apply the same line-cleanup to the story names themselves:
+			clean_name = cleanup_single_line(story_name)
+			if clean_name != story_name:
+				self[clean_name] = self.pop(story_name)
+				story_name = clean_name
+
 			if not self[story_name]:
 				self.pop(story_name)
 
@@ -245,7 +424,7 @@ class StoriesDatabase(_t.Dict[str, StoryVariants]):
 		All the duplicates are removed in process.
 		The text contains no trailing newline characters.
 		"""
-		self.remove_duplicates()
+		self.cleanup_stories()
 		if not self:
 			return list()  # type: TextLines
 
