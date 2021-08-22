@@ -40,6 +40,13 @@ class StoriesDatabase(_t.Dict[str, StoryVariants]):
 	src_dir = root_dir / '_src'
 	out_file = root_dir / 'Combined.txt'
 
+	# a dumb cleanup, removing any stories that have a line
+	# starting with '<link rel=' :
+	remove_code = True
+	code_pattern = _re.compile(
+		'\s*<link\s+rel\s*='
+	)
+
 	story_name_pattern = _re.compile(
 		'\s*-{3,}\s*'
 		'(.*?)'
@@ -182,6 +189,11 @@ class StoriesDatabase(_t.Dict[str, StoryVariants]):
 			print('Reading all the text files from dir: {}'.format(dir_path))
 		return self.parse_files(dir_path.iterdir())
 
+	def is_code_story(self, story: _t.Iterable[str]):
+		"""Whether the given story has some garbage code from scrape."""
+		matcher = self.code_pattern.match
+		return any(matcher(line) for line in story)
+
 	def remove_duplicates(self):
 		"""
 		Keep only a single instance of all the variants and remove all empty stories.
@@ -207,6 +219,11 @@ class StoriesDatabase(_t.Dict[str, StoryVariants]):
 			}
 			if empty_story_key in unique_variants_dict:
 				unique_variants_dict.pop(empty_story_key)
+
+			if self.remove_code:
+				for story_tuple in list(unique_variants_dict.keys()):
+					if self.is_code_story(story_tuple):
+						unique_variants_dict.pop(story_tuple)
 
 			if len(story_variants) == len(unique_variants_dict):
 				continue
