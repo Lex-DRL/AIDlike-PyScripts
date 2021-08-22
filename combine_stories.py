@@ -44,13 +44,13 @@ class StoriesDatabase(_t.Dict[str, StoryVariants]):
 	# starting with '<link rel=' :
 	remove_code = True
 	code_pattern = _re.compile(
-		'\s*<link\s+rel\s*='
+		'\\s*<link\\s+rel\\s*='
 	)
 
 	story_name_pattern = _re.compile(
-		'\s*-{3,}\s*'
-		'(.*?)'
-		'\s*-{3,}\s*$'
+		'\\s*-{3,}[-\\s]*'
+		'([^\\s-].*?)'
+		'[-\\s]*-{3,}\\s*$'
 		# For those who are unfamiliar with regex, it ^ is this format:
 		# '--- Story Name with whatever characters in it ---'
 		# There ^ might be 3 or more dash chars at the beginning/end, and/or
