@@ -15,7 +15,7 @@ from bs4 import (
 	Tag as _bsTag
 )
 
-from .__url import URLs
+from .__url import URLs, _StaticDataClass
 
 module_dir = Path(__file__).parent
 
@@ -34,7 +34,7 @@ class TagType(Enum):
 		return "%s.%s" % (self.__class__.__name__, self.name)
 
 
-type_map = {
+type_parse_map = {
 	'Fandom': TagType.Fandom,
 	'Character': TagType.Character,
 	'Relationship': TagType.Relationship,
@@ -150,13 +150,79 @@ class Tag(_t.NamedTuple):
 		)
 
 		type_str = span.find(text=True).strip().rstrip(':')
-		tag_type = type_map.get(type_str)
-		if tag_type is None:
-			tag_type = str(type_str)
+		tag_type = type_parse_map.get(type_str, str(type_str))
 
 		return cls.new_instance(
 			tag_type, a.text, canonical=canonical, url=a.get('href')
 		)
+
+	# noinspection PyShadowingBuiltins
+	def dumps(self):
+		"""Dump tag object to a string representation for saving to a file."""
+
+		type, name, canonical, usages, url = self
+		dump_maps = _TagDumpConfig.dump_map
+		if not type:
+			type = ''
+		if isinstance(type, TagType):
+			# noinspection PyTypeChecker
+			type = dump_maps.type[type]
+		assert isinstance(type, str), f'Wrong type for <{name}> tag: {repr(type)}'
+		type_s: str = type
+
+		assert name and isinstance(name, str), f'Invalid tag name: {repr(name)}'
+
+		assert isinstance(canonical, (_type(None), bool)), f'Invalid canonical state for <{name}> tag: {repr(canonical)}'
+		# noinspection PyUnresolvedReferences
+		canonical_s: str = dump_maps.canonical[canonical]
+
+		if usages is None or usages < 0:
+			usages = -1
+		assert isinstance(usages, int), f'Invalid usage count  for <{name}> tag: {repr(usages)}'
+		usages_s: str = '' if usages < 0 else str(usages)
+
+		if not url:
+			url = ''
+		assert isinstance(url, str)
+		url: str = URLs.unsplit(URLs.split(url, to_abs=False))
+
+		return _TagDumpConfig.reorder_dump(
+			id + val for id, val in zip(
+				_TagDumpConfig.dump_id,
+				(type_s, name, canonical_s, usages_s, url),
+			)
+		)
+
+
+# noinspection PyTypeChecker
+class _TagDumpConfig(_StaticDataClass):
+	"""Constants related to dumped tag format."""
+
+	dump_id = Tag(type='-Tp:', name='-Tag:', canonical='-Canon:', usages='-Use:', url='-URL:')
+	dump_map = Tag(
+		type={
+			TagType.Fandom: 'Fandom',
+			TagType.Character: 'Character',
+			TagType.Relationship: 'Relationship',
+			TagType.Freeform: 'Freeform',
+			TagType.Unsorted: 'UnsortedTag',
+		},
+		name=None,
+		canonical={
+			None: '',
+			True: '+',
+			False: '-',
+		},
+		usages=None,
+		url=None
+	)
+
+	@classmethod
+	def reorder_dump(cls, items: _t.Iterable):
+		"""Reorder tag elements from pythonic to dumped order."""
+		# noinspection PyShadowingBuiltins
+		type, name, canonical, usages, url, *left = items
+		return name, type, canonical, usages, url
 
 
 class __TagIO(object):
@@ -179,8 +245,21 @@ class __TagIO(object):
 
 class TagSet(_t.Set[Tag], __TagIO):
 
+	name: str = ''
+
+	def __init__(self, *args, name: str = ''):
+		super(TagSet, self).__init__(*args)
+		if name:
+			self.name = name
+
 	def _load_from_search_page(self, url: str):
 		self.update(
 			super(TagSet, self)._load_from_search_page(url)
 		)
 		return self
+
+	def __repr__(self):
+		res = super(TagSet, self).__repr__()
+		if self.name:
+			res = res.replace('(', f'({repr(self.name)}: ', 1)
+		return res

@@ -20,7 +20,12 @@ from urllib.parse import (
 
 
 @_dataclass(init=False, frozen=True)
-class URLs:
+class _StaticDataClass:
+	def __init__(self):
+		raise TypeError(f"<{self.__class__.__name__}> is non-instantiable data class")
+
+
+class URLs(_StaticDataClass):
 	protocol = 'https'
 	protocol_prefix = 'https://'
 	domain = 'archiveofourown.org'
@@ -28,9 +33,6 @@ class URLs:
 
 	tag_root = '/tags/'
 	tag_search_root = '/tags/search'
-
-	def __init__(self):
-		raise TypeError(f"<{self.__class__.__name__}> is non-instantiable data class")
 
 	quote = _quote
 	quote_plus = _quote_plus
