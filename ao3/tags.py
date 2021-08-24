@@ -7,6 +7,10 @@ __author__ = 'Lex Darlog (DRL)'
 import typing as _t
 from pathlib import Path
 from enum import Enum
+from datetime import (
+	datetime as dt,
+	timezone as tz,
+)
 
 import requests
 # noinspection PyProtectedMember
@@ -61,6 +65,7 @@ _unknown_tag_usage = -1  # default <usage> value
 
 
 _type = type
+NoneType = type(None)
 
 
 # @init_tag_cleanup_dec
@@ -68,11 +73,11 @@ class Tag(_t.NamedTuple):
 	"""
 	NamedTuple representing a tag.
 
-	Only first two items (type/name) are used for any comparisons and hashing,
+	Only first 3 items (type/name/canon) are used for any comparisons and hashing,
 	optional items are ignored.
 	Therefore:
-		* `(type, name) == tag_instance`
-		* `(type, name, canonical) != tag_instance`
+		* `(type, name) != tag_instance`
+		* `(type, name, canonical) == tag_instance`
 		* `(type, name, canonical, usages, url) != tag_instance`
 
 	So beware about it. Since, if you slice it, the newly created regular tuple
@@ -88,17 +93,76 @@ class Tag(_t.NamedTuple):
 	canonical: _t.Optional[bool] = False
 	usages: int = _unknown_tag_usage
 	url: str = None
+	date: _t.Optional[dt] = None
+
+	# noinspection PyAttributeOutsideInit
+	@property
+	def id(self):
+		"""The actual value the tag is represented as during hashing/equality check."""
+		return self[:_tag_id_items]
 
 	def __eq__(self, other):
-		if isinstance(other, Tag):
-			other = other[:_tag_id_items]
-		return self[:_tag_id_items] == other
+		return self.id == (
+			other.id if isinstance(other, Tag) else other
+		)
 
 	def __ne__(self, other):
 		return not self.__eq__(other)
 
 	def __hash__(self):
-		return hash(self[:_tag_id_items])
+		return hash(self.id)
+
+	@classmethod
+	def _clean_date(cls, calling_method: str, date: _t.Optional[dt], name: str = None):
+		"""
+		Part of `_clean_args()` that checks only date argument
+		(it might be needed to check it separately).
+		"""
+		tag_part = cls.__name__ if name is None else f'for tag <{name}>'
+		assert isinstance(date, (NoneType, dt)), (
+			f'Wrong date {tag_part}.{calling_method}(): {repr(date)}'
+		)
+		date: _t.Optional[dt] = date
+		return date
+
+	# noinspection PyShadowingBuiltins
+	@classmethod
+	def _clean_args(cls, calling_method: str, *args):
+		"""Perform check on input arguments and auto-clean them if possible."""
+
+		type, name, canonical, usages, url, date, *extras = args
+
+		url: str = URLs.unsplit(URLs.split(url, to_abs=False))
+
+		if canonical is not None:
+			canonical = bool(canonical)
+
+		if usages is None:
+			usages = _unknown_tag_usage
+
+		assert name and isinstance(name, str), (
+			f'Invalid tag name passed to {cls.__name__}.{calling_method}(): {repr(name)}'
+		)
+		assert isinstance(type, (NoneType, TagType, str)), (
+			f'Wrong type for tag <{name}>.{calling_method}(): {repr(type)}'
+		)
+		assert isinstance(canonical, (NoneType, bool)), (
+			f'Wrong canonical state for tag <{name}>.{calling_method}(): {repr(canonical)}'
+		)
+		assert isinstance(usages, int), (
+			f'Wrong usages for tag <{name}>.{calling_method}(): {repr(usages)}'
+		)
+		assert not url or isinstance(url, str) and url.startswith(URLs.tag_root), (
+			f'Wrong URL for tag <{name}>.{calling_method}(): {repr(url)}'
+		)
+
+		type: _t.Union[None, TagType, str] = type
+		canonical: _t.Optional[bool] = canonical
+		date: _t.Optional[dt] = cls._clean_date(calling_method, date, name)
+		if date is None and usages > -1:
+			date = dt.now()
+
+		return type, name, canonical, usages, url, date
 
 	# noinspection PyShadowingBuiltins
 	@classmethod
@@ -109,22 +173,18 @@ class Tag(_t.NamedTuple):
 		canonical: _t.Optional[bool] = False,
 		usages: _t.Optional[int] = _unknown_tag_usage,
 		url: _t.Optional[str] = None,
+		date: _t.Optional[dt] = None,
 	):
 		"""
 		Use this constructor method instead of just `Tag()`, because it performs
 		some extra arguments check/cleanup.
 		"""
-		url: str = URLs.unsplit(URLs.split(url, to_abs=False))
-		assert url.startswith(URLs.tag_root) or not url, f'Invalid tag URL: {url}'
-		if canonical is not None:
-			canonical = bool(canonical)
-		if usages is None:
-			usages = _unknown_tag_usage
+		type, name, canonical, usages, url, date = cls._clean_args(
+			'new_instance',
+			type, name, canonical, usages, url, date
+		)
 
-		assert isinstance(type, (_type(None), TagType, str)), f'Wrong <type> item: {type}'
-		assert name and isinstance(name, str), f'Wrong <name> item: {name}'
-		assert isinstance(usages, int), f'Wrong <usages> item: {usages}'
-		return cls(type, name, canonical=canonical, usages=usages, url=url)
+		return cls(type, name, canonical=canonical, usages=usages, url=url, date=date)
 
 	@classmethod
 	def build_from_li(cls, tag_li: _bsTag):
@@ -156,40 +216,54 @@ class Tag(_t.NamedTuple):
 			tag_type, a.text, canonical=canonical, url=a.get('href')
 		)
 
+	@classmethod
+	def date_str(cls, date: _t.Optional[dt]):
+		clean_date = cls._clean_date('date_str', date)
+		if clean_date is None:
+			return ''
+		return clean_date.strftime(_TagDumpConfig.date_format)
+
+	@classmethod
+	def date_from_str(cls, date_str: _t.Optional[str], in_timezone=None):
+		if not date_str:
+			return None
+		return dt.strptime(date_str, _TagDumpConfig.date_format).astimezone(in_timezone)
+
+	@classmethod
+	def reorder_to_dump(cls, items: _t.Iterable):
+		"""Reorder tag elements from tuple to dumped order."""
+		# noinspection PyShadowingBuiltins
+		type, name, canonical, usages, url, date, *left = items
+		return name, type, canonical, usages, url, date
+
 	# noinspection PyShadowingBuiltins
 	def dumps(self):
 		"""Dump tag object to a string representation for saving to a file."""
 
-		type, name, canonical, usages, url = self
+		type, name, canonical, usages, url, date = self._clean_args('dumps', *self)
+
 		dump_maps = _TagDumpConfig.dump_map
+
 		if not type:
 			type = ''
 		if isinstance(type, TagType):
 			# noinspection PyTypeChecker
-			type = dump_maps.type[type]
-		assert isinstance(type, str), f'Wrong type for <{name}> tag: {repr(type)}'
-		type_s: str = type
+			type: str = dump_maps.type[type]
+		assert isinstance(type, str)
 
-		assert name and isinstance(name, str), f'Invalid tag name: {repr(name)}'
-
-		assert isinstance(canonical, (_type(None), bool)), f'Invalid canonical state for <{name}> tag: {repr(canonical)}'
 		# noinspection PyUnresolvedReferences
 		canonical_s: str = dump_maps.canonical[canonical]
 
 		if usages is None or usages < 0:
 			usages = -1
-		assert isinstance(usages, int), f'Invalid usage count  for <{name}> tag: {repr(usages)}'
 		usages_s: str = '' if usages < 0 else str(usages)
 
-		if not url:
-			url = ''
-		assert isinstance(url, str)
-		url: str = URLs.unsplit(URLs.split(url, to_abs=False))
+		date_s = '' if date is None else self.date_str(date.astimezone(tz=tz.utc))
 
-		return _TagDumpConfig.reorder_dump(
+		return self.reorder_to_dump(
 			id + val for id, val in zip(
 				_TagDumpConfig.dump_id,
-				(type_s, name, canonical_s, usages_s, url),
+				(type, name, canonical_s, usages_s, url, date_s),
 			)
 		)
 
@@ -198,7 +272,11 @@ class Tag(_t.NamedTuple):
 class _TagDumpConfig(_StaticDataClass):
 	"""Constants related to dumped tag format."""
 
-	dump_id = Tag(type='-Tp:', name='-Tag:', canonical='-Canon:', usages='-Use:', url='-URL:')
+	date_format: str = '%Y.%m.%d-%H:%M:%S|%Z'
+	dump_id = Tag(
+		type='-Tp:', name='-Tag:', canonical='-Canon:',
+		usages='-Use:', url='-URL:', date='-Dt:',
+	)
 	dump_map = Tag(
 		type={
 			TagType.Fandom: 'Fandom',
@@ -214,15 +292,9 @@ class _TagDumpConfig(_StaticDataClass):
 			False: '-',
 		},
 		usages=None,
-		url=None
+		url=None,
+		date=None,
 	)
-
-	@classmethod
-	def reorder_dump(cls, items: _t.Iterable):
-		"""Reorder tag elements from pythonic to dumped order."""
-		# noinspection PyShadowingBuiltins
-		type, name, canonical, usages, url, *left = items
-		return name, type, canonical, usages, url
 
 
 class __TagIO(object):
