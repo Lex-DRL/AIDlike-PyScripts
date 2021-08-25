@@ -19,9 +19,9 @@ from bs4 import (
 	Tag as _bsTag
 )
 
-from .__url import URLs, _StaticDataClass
+from .__url import URLs
+from .__paths import _StaticDataClass
 
-module_dir = Path(__file__).parent
 
 parser = 'lxml'
 

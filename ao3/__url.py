@@ -6,7 +6,6 @@ __author__ = 'Lex Darlog (DRL)'
 
 import typing as _t
 
-from dataclasses import dataclass as _dataclass
 # noinspection SpellCheckingInspection
 from urllib.parse import (
 	quote as _quote,
@@ -15,14 +14,13 @@ from urllib.parse import (
 	unquote_plus as _unquote_plus,
 	urlsplit as _split,
 	urlunsplit as _unsplit,
+	parse_qs as _parse_qs,
+	parse_qsl as _parse_qsl,
+	urlencode as _urlencode,
 	SplitResult,
 )
 
-
-@_dataclass(init=False, frozen=True)
-class _StaticDataClass:
-	def __init__(self):
-		raise TypeError(f"<{self.__class__.__name__}> is non-instantiable data class")
+from .__paths import _StaticDataClass
 
 
 class URLs(_StaticDataClass):
@@ -38,6 +36,12 @@ class URLs(_StaticDataClass):
 	quote_plus = _quote_plus
 	unquote = _unquote
 	unquote_plus = _unquote_plus
+
+	split_qs_dict = _parse_qs
+	split_qs_list = _parse_qsl
+
+	unsplit_qs = _urlencode
+
 	# noinspection SpellCheckingInspection
 	unsplit = _unsplit
 	SplitResult = SplitResult
