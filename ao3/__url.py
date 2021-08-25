@@ -30,6 +30,7 @@ class URLs(_StaticDataClass):
 	domain_www = 'www.archiveofourown.org'
 
 	tag_root = '/tags/'
+	tag_root_n = len(tag_root)
 	tag_search_root = '/tags/search'
 
 	quote = _quote

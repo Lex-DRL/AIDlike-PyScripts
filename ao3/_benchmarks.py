@@ -74,7 +74,7 @@ Estimate sizes:
 
 	n_pages = 15
 	url = "https://archiveofourown.org/tags/search?utf8=✓&query[name]=male shepard NOT female NOT she NOT edi NOT Ashley NOT Williams NOT Liara NOT Tali'Zorah NOT Miranda&query[type]="
-	# page1 = "https://archiveofourown.org/tags/search?page=2&query[name]=male shepard NOT female NOT she NOT edi NOT Ashley NOT Williams NOT Liara NOT Tali'Zorah NOT Miranda&query[type]=''&utf8=✓"
+	# page1 = "https://archiveofourown.org/tags/search?page=2&query[name]=male shepard NOT female NOT she NOT edi NOT Ashley NOT Williams NOT Liara NOT Tali'Zorah NOT Miranda&query[type]=&utf8=✓"
 
 	sort_key_map = {
 		'utf8': -2,
