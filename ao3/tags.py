@@ -53,14 +53,13 @@ type_parse_map = {
 # 			args_list = list(args)
 # 			args_list[4] = clean_url(args[4])
 # 			args = tuple(args_list)
-# 		if 'url' in kwargs:
-# 			kwargs['url'] = clean_url(kwargs['url'])
+# 		if 'url_token' in kwargs:
+# 			kwargs['url_token'] = clean_url(kwargs['url_token'])
 # 		return class_obj(*args, **kwargs)
 #
 # 	return new_instance
 
 
-_tag_id_items = 3  # how many tag items from start are used for hash / == check
 _unknown_tag_usage = -1  # default <usage> value
 
 
@@ -73,33 +72,32 @@ class Tag(_t.NamedTuple):
 	"""
 	NamedTuple representing a tag.
 
-	Only first 3 items (type/name/canon) are used for any comparisons and hashing,
-	optional items are ignored.
+	For equality check and hashing, only name and url_token are used since they're
+	the ones uniquely identifying a tag.
 	Therefore:
-		* `(type, name) != tag_instance`
-		* `(type, name, canonical) == tag_instance`
-		* `(type, name, canonical, usages, url) != tag_instance`
+		* `(name, url_token) == tag_instance`
+		* `(type, name, url_token) != tag_instance`
+		* `(type, name, url_token, canonical, usages, date) != tag_instance`
 
-	So beware about it. Since, if you slice it, the newly created regular tuple
-	is no longer equal to the tag instance, because it contains all the items and
-	the instance itself is "represented" with just two in equality check.
+	So beware about it. Since, if you just make a full slice, the newly created
+	regular tuple is already not equal to the tag instance.
 
-	Similarly, if you have two tag instances with different values in optional
-	items and you make a set of them / dict with them as keys - then only one
-	of them will get into the set.
+	Similarly, if you have two tag instances with only other optional field varying
+	and you make a set of them / dict with them as keys - then only one of them
+	would get into the set.
 	"""
 	type: _t.Union[None, TagType, str]
 	name: str
+	url_token: str = None
 	canonical: _t.Optional[bool] = False
 	usages: int = _unknown_tag_usage
-	url: str = None
 	date: _t.Optional[dt] = None
 
 	# noinspection PyAttributeOutsideInit
 	@property
 	def id(self):
 		"""The actual value the tag is represented as during hashing/equality check."""
-		return self[:_tag_id_items]
+		return self.name, self.url_token
 
 	def __eq__(self, other):
 		return self.id == (
@@ -127,12 +125,42 @@ class Tag(_t.NamedTuple):
 
 	# noinspection PyShadowingBuiltins
 	@classmethod
-	def _clean_args(cls, calling_method: str, *args):
+	def _clean_args(
+		cls,
+		calling_method: str,
+		*args,
+		url_token_already_clean=False  # we need to know whether it's already not an URL
+	):
 		"""Perform check on input arguments and auto-clean them if possible."""
 
-		type, name, canonical, usages, url, date, *extras = args
+		type, name, url_token, canonical, usages, date, *extras = args
 
-		url: str = URLs.unsplit(URLs.split(url, to_abs=False))
+		assert name and isinstance(name, str), (
+			f'Invalid tag name passed to {cls.__name__}.{calling_method}(): {repr(name)}'
+		)
+
+		if (
+			url_token != _TagDumpConfig.token_match_name_indicator
+			and not url_token_already_clean
+		):
+			# url_token = 'https://archiveofourown.org/tags/Admiral%20Anderson'
+			# url_token = '/tags/Mass%20Effect%20Trilogy'
+			# url_token = 'Mass Effect Trilogy'
+			# url_token = 'Mass Effect Trilogy/works'
+			url_token: str = URLs.split(url_token, unquote=True, to_abs=False).path
+			if url_token.startswith(URLs.tag_root):
+				url_token = url_token[URLs.tag_root_n:]
+			url_token = url_token.split('/')[0]
+			if url_token == name:
+				url_token = _TagDumpConfig.token_match_name_indicator
+
+		assert isinstance(url_token, str) and (
+			not url_token
+			or url_token == _TagDumpConfig.token_match_name_indicator
+			or _TagDumpConfig.token_match_name_indicator not in url_token
+		), (
+			f'Wrong URL for tag <{name}>.{calling_method}(): {repr(url_token)}'
+		)
 
 		if canonical is not None:
 			canonical = bool(canonical)
@@ -140,9 +168,6 @@ class Tag(_t.NamedTuple):
 		if usages is None:
 			usages = _unknown_tag_usage
 
-		assert name and isinstance(name, str), (
-			f'Invalid tag name passed to {cls.__name__}.{calling_method}(): {repr(name)}'
-		)
 		assert isinstance(type, (NoneType, TagType, str)), (
 			f'Wrong type for tag <{name}>.{calling_method}(): {repr(type)}'
 		)
@@ -152,9 +177,6 @@ class Tag(_t.NamedTuple):
 		assert isinstance(usages, int), (
 			f'Wrong usages for tag <{name}>.{calling_method}(): {repr(usages)}'
 		)
-		assert not url or isinstance(url, str) and url.startswith(URLs.tag_root), (
-			f'Wrong URL for tag <{name}>.{calling_method}(): {repr(url)}'
-		)
 
 		type: _t.Union[None, TagType, str] = type
 		canonical: _t.Optional[bool] = canonical
@@ -162,7 +184,7 @@ class Tag(_t.NamedTuple):
 		if date is None and usages > -1:
 			date = dt.now()
 
-		return type, name, canonical, usages, url, date
+		return type, name, url_token, canonical, usages, date
 
 	# noinspection PyShadowingBuiltins
 	@classmethod
@@ -170,21 +192,21 @@ class Tag(_t.NamedTuple):
 		cls,
 		type: _t.Union[None, TagType, str],
 		name: str,
+		url_token: _t.Optional[str] = None,
 		canonical: _t.Optional[bool] = False,
 		usages: _t.Optional[int] = _unknown_tag_usage,
-		url: _t.Optional[str] = None,
 		date: _t.Optional[dt] = None,
 	):
 		"""
 		Use this constructor method instead of just `Tag()`, because it performs
 		some extra arguments check/cleanup.
 		"""
-		type, name, canonical, usages, url, date = cls._clean_args(
+		type, name, url_token, canonical, usages, date = cls._clean_args(
 			'new_instance',
-			type, name, canonical, usages, url, date
+			type, name, url_token, canonical, usages, date,
 		)
 
-		return cls(type, name, canonical=canonical, usages=usages, url=url, date=date)
+		return cls(type, name, url_token=url_token, canonical=canonical, usages=usages, date=date,)
 
 	@classmethod
 	def build_from_li(cls, tag_li: _bsTag):
@@ -213,7 +235,7 @@ class Tag(_t.NamedTuple):
 		tag_type = type_parse_map.get(type_str, str(type_str))
 
 		return cls.new_instance(
-			tag_type, a.text, canonical=canonical, url=a.get('href')
+			tag_type, a.text, canonical=canonical, url_token=a.get('href')
 		)
 
 	@classmethod
@@ -233,14 +255,17 @@ class Tag(_t.NamedTuple):
 	def reorder_to_dump(cls, items: _t.Iterable):
 		"""Reorder tag elements from tuple to dumped order."""
 		# noinspection PyShadowingBuiltins
-		type, name, canonical, usages, url, date, *left = items
-		return name, type, canonical, usages, url, date
+		type, name, url_token, canonical, usages, date, *left = items
+		return name, url_token, type, canonical, usages, date
 
 	# noinspection PyShadowingBuiltins
-	def dumps(self):
+	def dumps(self) -> _t.Tuple[str, ...]:
 		"""Dump tag object to a string representation for saving to a file."""
 
-		type, name, canonical, usages, url, date = self._clean_args('dumps', *self)
+		type, name, url_token, canonical, usages, date = self._clean_args(
+			'dumps', *self,
+			url_token_already_clean=True
+		)
 
 		dump_maps = _TagDumpConfig.dump_map
 
@@ -263,7 +288,7 @@ class Tag(_t.NamedTuple):
 		return self.reorder_to_dump(
 			id + val for id, val in zip(
 				_TagDumpConfig.dump_id,
-				(type, name, canonical_s, usages_s, url, date_s),
+				(type, name, url_token, canonical_s, usages_s, date_s),
 			)
 		)
 
@@ -273,9 +298,14 @@ class _TagDumpConfig(_StaticDataClass):
 	"""Constants related to dumped tag format."""
 
 	date_format: str = '%Y.%m.%d-%H:%M:%S|%Z'
+
+	# A char that can't possibly be inside url token, we use it to indicate that
+	# token url is exactly the same as name, to save on dump size (and mem footprint):
+	token_match_name_indicator = '/'
+
 	dump_id = Tag(
-		type='-Tp:', name='-Tag:', canonical='-Canon:',
-		usages='-Use:', url='-URL:', date='-Dt:',
+		type='-Tp:', name='-Tag:', url_token='-URL:',
+		canonical='-Canon:', usages='-Use:', date='-Dt:',
 	)
 	dump_map = Tag(
 		type={
@@ -286,13 +316,13 @@ class _TagDumpConfig(_StaticDataClass):
 			TagType.Unsorted: 'UnsortedTag',
 		},
 		name=None,
+		url_token=None,
 		canonical={
 			None: '',
 			True: '+',
 			False: '-',
 		},
 		usages=None,
-		url=None,
 		date=None,
 	)
 
@@ -302,9 +332,21 @@ class __TagIO(object):
 
 	def _load_from_search_page(self, url: str):
 		"""Parse a single search page for tags."""
-		url_split = URLs.split(url)
+
+		def prepare_clean_split_url(src_url: str):
+			"""Cleanup URL, turn it to standard (split) form, then re-quote it."""
+			protocol, domain, path, query, *rest = URLs.split(src_url)
+			protocol, domain, *rest = (
+				URLs.quote(x, safe='') for x in (protocol, domain, *rest)
+			)
+			# path heeds special treatment:
+			path = URLs.quote(path, safe='/')
+			query = URLs.quote(query, safe='&=')
+			return URLs.SplitResult(protocol, domain, path, query, *rest)
+
+		url_split = prepare_clean_split_url(url)
 		assert url_split.path.startswith(URLs.tag_search_root), f"Not a tag search page: {url}"
-		url = URLs.unsplit(url_split)
+		url = url_split.geturl()
 
 		page = BeautifulSoup(requests.get(url).text, parser)
 		tag_ols = page.find_all('ol', class_='tag index group')
@@ -335,3 +377,10 @@ class TagSet(_t.Set[Tag], __TagIO):
 		if self.name:
 			res = res.replace('(', f'({repr(self.name)}: ', 1)
 		return res
+
+
+if __name__ == '__main__':
+	tags = TagSet(name='QQQ')
+	tags._load_from_search_page(
+		"https://archiveofourown.org/tags/search?utf8=✓&query[name]=male shepard NOT female NOT she NOT edi NOT Ashley NOT Williams NOT Liara NOT Tali'Zorah NOT Miranda"
+	)
