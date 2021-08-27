@@ -543,7 +543,19 @@ class TagSearch:
 
 	url: URLs.SplitResult
 
+	__stored_url_override_query = dict(page=None, utf8=None)
+	__search_override_query = dict(utf8='✓')
+	__query_sort_override_weights = {
+		'utf8': -11,
+		'query[name]': -2,
+		'query[type]': -1,
+		'view_adult': 10,
+		'page': 11,
+	}
+
 	def __init__(self, url: _t.Union[str, URLs.SplitResult], view_adult=True):
+		super(TagSearch, self).__init__()
+
 		url_str: str = (
 			url.geturl() if isinstance(url, URLs.SplitResult)
 			else url
@@ -556,10 +568,10 @@ class TagSearch:
 		assert url_split.path.startswith(URLs.tag_search_root), f"Not a tag search page: {url}"
 
 		url_split = URLs.override_query(
-			url_split, quote_mode=0,
-			page=None, view_adult='true' if view_adult else None
+			url_split, quote_mode=0, query_sort_key_f=self.__query_sort_key,
+			view_adult='true' if view_adult else None,
+			**self.__stored_url_override_query
 		)
-		super(TagSearch, self).__init__()
 		object.__setattr__(self, "url", url_split)  # the way to go for frozen
 
 	@classmethod
@@ -574,9 +586,17 @@ class TagSearch:
 
 		return (Tag.build_from_li(tag_li) for tag_li in tag_lines)
 
+	@classmethod
+	def __query_sort_key(cls, i_key_val: _t.Tuple[int, str, _t.Any]):
+		i, key, val = i_key_val
+		return cls.__query_sort_override_weights.get(key, 0), i
+
 	def page_urls(self, n: int, skip_first=False):
 		return [
-			URLs.override_query(self.url, page=x if x > 1 else None).geturl()
+			URLs.override_query(
+				self.url, query_sort_key_f=self.__query_sort_key,
+				page=x if x > 1 else None, **self.__search_override_query,
+			).geturl()
 			for x in range(
 				2 if skip_first else 1,
 				max(1, n) + 1
@@ -601,7 +621,11 @@ class TagSearch:
 	def load_tags(self, cache=True):
 		"""Load all the tags from all the pages for the given search url."""
 		res = TagSet(
-			name=URLs.override_query(self.url, keep_blank_values=False, quote_mode=0).query
+			name=URLs.override_query(
+				self.url, keep_blank_values=False, quote_mode=0,
+				query_sort_key_f=self.__query_sort_key,
+				**self.__stored_url_override_query
+			).query
 		)
 
 		def dummy(tag_set: TagSet):
@@ -625,7 +649,10 @@ class TagSearch:
 			print(url)
 			return BeautifulSoup(requests.get(url).text, parser)
 
-		first_url = URLs.override_query(self.url, page=None).geturl()
+		first_url = URLs.override_query(
+			self.url, page=None, query_sort_key_f=self.__query_sort_key,
+			**self.__search_override_query
+		).geturl()
 		first_page_soup = get_page_soup(first_url)
 
 		pagers = first_page_soup.find_all('ol', class_='pagination')

@@ -150,6 +150,7 @@ class URLs(_StaticDataClass):
 		errors='strict',
 		unquote_mode=2,
 		quote_mode=2,
+		query_sort_key_f: _t.Optional[_t.Callable[[_t.Tuple[int, str, _t.Any]], _t.Any]] = None,
 		**kwargs
 	):
 		"""
@@ -158,6 +159,12 @@ class URLs(_StaticDataClass):
 		When no kwargs provided, this can be used to just clean up the query part of URL.
 
 		Unquote is (optionally) done before parsing query, quote - after.
+
+		If `query_sort_key_f` function provided, a sorting is performed.
+		This function takes a single argument as a tuple of:
+			* int, the original index of argument
+			* str - query key
+			* query value
 		"""
 
 		assert isinstance(url_split, SplitResult), "url_split must be a SplitResult instance"
@@ -195,6 +202,14 @@ class URLs(_StaticDataClass):
 			if v is None or k in present_keys:
 				continue
 			query_list.append((k, v))
+
+		if callable(query_sort_key_f):
+			query_list = [
+				(key, val) for idx, key, val in sorted(
+					((i, k, v) for i, (k, v) in enumerate(query_list)),
+					key=query_sort_key_f
+				)
+			]
 
 		# compile query back:
 		# noinspection PyCallByClass
