@@ -6,6 +6,8 @@ __author__ = 'Lex Darlog (DRL)'
 
 import typing as _t
 
+from html import unescape as _html_unescape
+
 # noinspection SpellCheckingInspection
 from urllib.parse import (
 	quote as _quote,
@@ -21,6 +23,12 @@ from urllib.parse import (
 )
 
 from .__paths import _StaticDataClass
+
+
+# noinspection PyUnusedLocal
+def _dummy(x, *args, **kwargs):
+	"""A dummy function passing through the first argument and ignoring the others."""
+	return x
 
 
 class URLs(_StaticDataClass):
@@ -91,13 +99,17 @@ class URLs(_StaticDataClass):
 			else:
 				# noinspection PyCallByClass
 				url = cls.unquote(url, errors='strict')
-		url = url.lstrip('/')
+
 		if any(
 			url.startswith(x) for x in (cls.domain, cls.domain_www)
 		):
 			url = cls.protocol_prefix + url
 
-		protocol, domain, path, *rest = _split(url)  # type: str
+		# url = url.lstrip('/')  # no need, properly interpreted as path anyway, clean later
+		# _split('/////qqq/www?aaa=zzz&qqq[www]=$ttt=7#asdf-1')
+		# _split('http://///qqq/www?aaa=zzz&qqq[www]=$ttt=7#asdf-1')
+
+		protocol, domain, path, query_str, *rest = _split(url)  # type: str
 		protocol = cls.protocol
 
 		if domain.lower().startswith('www.'):
@@ -114,8 +126,10 @@ class URLs(_StaticDataClass):
 
 		path = '/' + path.lstrip('/')
 
+		query_str = _html_unescape(query_str)
+
 		# noinspection PyArgumentList
-		return SplitResult(protocol, domain, path, *rest)
+		return SplitResult(protocol, domain, path, query_str, *rest)
 
 	@classmethod
 	def quote_segments(
@@ -128,7 +142,7 @@ class URLs(_StaticDataClass):
 		everything else.
 		"""
 		assert isinstance(url_split, SplitResult), "url_split must be a SplitResult instance"
-		protocol, domain, path, query, *rest = url_split
+		protocol, domain, path, query_str, *rest = url_split
 
 		quote_f = cls.quote_plus if quote_plus else cls.quote
 
@@ -136,10 +150,10 @@ class URLs(_StaticDataClass):
 			quote_f(x, safe='') for x in (protocol, domain, *rest)
 		)
 		path = quote_f(path, safe='/')
-		query = quote_f(query, safe='&=')
+		query_str = quote_f(_html_unescape(query_str), safe='&=')
 
 		# noinspection PyArgumentList
-		return SplitResult(protocol, domain, path, query, *rest)
+		return SplitResult(protocol, domain, path, query_str, *rest)
 
 	@classmethod
 	def override_query(
@@ -170,21 +184,18 @@ class URLs(_StaticDataClass):
 		assert isinstance(url_split, SplitResult), "url_split must be a SplitResult instance"
 		protocol, domain, path, query_str, *rest = url_split
 
-		# noinspection PyUnusedLocal,PyShadowingNames
-		def dummy_quote(string: _t.AnyStr, *args, **kwargs):
-			return string
-
 		quote_f = {
 			1: cls.quote,
 			2: cls.quote_plus,
-		}.get(quote_mode, dummy_quote)
+		}.get(quote_mode, _dummy)
 		unquote_f = {
 			1: cls.unquote,
 			2: cls.unquote_plus,
-		}.get(unquote_mode, dummy_quote)
+		}.get(unquote_mode, _dummy)
 
-		query_str = unquote_f(query_str.replace('&amp;', '&'), errors=errors)
+		query_str: str = unquote_f(_html_unescape(query_str), errors=errors)
 
+		# noinspection PyCallByClass
 		query_list = cls.split_qs_list(
 			query_str, keep_blank_values=keep_blank_values, strict_parsing=strict_parsing,
 			errors=errors,
