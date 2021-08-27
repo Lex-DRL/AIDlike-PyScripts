@@ -5,8 +5,10 @@
 __author__ = 'Lex Darlog (DRL)'
 
 import typing as _t
-from pathlib import Path
+
 from enum import Enum
+from itertools import chain
+from dataclasses import dataclass as _dataclass
 from datetime import (
 	datetime as dt,
 	timezone as tz,
@@ -20,7 +22,7 @@ from bs4 import (
 )
 
 from .__url import URLs
-from .__paths import _StaticDataClass
+from .__paths import _StaticDataClass, Paths
 
 
 parser = 'lxml'
@@ -292,10 +294,35 @@ class Tag(_t.NamedTuple):
 			)
 		)
 
+	def sorting_key(self):
+		"""A key for tags sort."""
+
+		# noinspection PyShadowingBuiltins
+		def type_string(type):
+			if type is None:
+				return ''
+			if isinstance(type, str):
+				return type
+			assert isinstance(type, TagType)
+			return f'{type.value}_{type.name}'
+
+		def date_key(date: _t.Optional[dt]):
+			if date is None:
+				date = _TagDumpConfig.zero_day
+			return _TagDumpConfig.zero_day - date
+
+		return (
+			not self.canonical, -self.usages, type_string(self.type),
+			self.name, self.url_token, date_key(self.date)
+		)
+
 
 # noinspection PyTypeChecker
 class _TagDumpConfig(_StaticDataClass):
 	"""Constants related to dumped tag format."""
+
+	# to sort tags by date, we need to subtract it from SOME date, so let's use smth round:
+	zero_day = dt(2020, 1, 1, 0, 0, 0, 0, None)
 
 	date_format: str = '%Y.%m.%d-%H:%M:%S|%Z'
 
@@ -327,37 +354,7 @@ class _TagDumpConfig(_StaticDataClass):
 	)
 
 
-class __TagIO(object):
-	"""Base class with common methods for loading/saving tags."""
-
-	def _load_from_search_page(self, url: str):
-		"""Parse a single search page for tags."""
-
-		def prepare_clean_split_url(src_url: str):
-			"""Cleanup URL, turn it to standard (split) form, then re-quote it."""
-			protocol, domain, path, query, *rest = URLs.split(src_url)
-			protocol, domain, *rest = (
-				URLs.quote(x, safe='') for x in (protocol, domain, *rest)
-			)
-			# path heeds special treatment:
-			path = URLs.quote(path, safe='/')
-			query = URLs.quote(query, safe='&=')
-			return URLs.SplitResult(protocol, domain, path, query, *rest)
-
-		url_split = prepare_clean_split_url(url)
-		assert url_split.path.startswith(URLs.tag_search_root), f"Not a tag search page: {url}"
-		url = url_split.geturl()
-
-		page = BeautifulSoup(requests.get(url).text, parser)
-		tag_ols = page.find_all('ol', class_='tag index group')
-		assert len(tag_ols) == 1, f"Found {len(tag_ols)} tag lists"
-		tag_ol: _bsTag = tag_ols[0]
-		tag_lines = tag_ol.find_all('li')
-
-		return (Tag.build_from_li(tag_li) for tag_li in tag_lines)
-
-
-class TagSet(_t.Set[Tag], __TagIO):
+class TagSet(_t.Set[Tag]):
 
 	name: str = ''
 
@@ -366,21 +363,149 @@ class TagSet(_t.Set[Tag], __TagIO):
 		if name:
 			self.name = name
 
-	def _load_from_search_page(self, url: str):
-		self.update(
-			super(TagSet, self)._load_from_search_page(url)
-		)
-		return self
-
 	def __repr__(self):
 		res = super(TagSet, self).__repr__()
 		if self.name:
 			res = res.replace('(', f'({repr(self.name)}: ', 1)
 		return res
 
+	def dumps(self, separator_line=''):
+		"""
+		Generator iterating over all the lines in a combined dump
+		of all the tags in this set.
+		"""
+
+		def sort_key(x: Tag):
+			return x.sorting_key()
+
+		sorted_tags: _t.Iterator[Tag] = iter(sorted(self, key=sort_key))
+		try:
+			first_tag = next(sorted_tags)
+		except StopIteration:
+			return
+
+		for line in first_tag.dumps():
+			yield line
+
+		for tag in sorted_tags:
+			yield separator_line
+			for line in tag.dumps():
+				yield line
+
+
+@_dataclass(init=False, frozen=True)
+class TagSearch:
+
+	url: URLs.SplitResult
+
+	def __init__(self, url: _t.Union[str, URLs.SplitResult], view_adult=True):
+		url_str: str = (
+			url.geturl() if isinstance(url, URLs.SplitResult)
+			else url
+		)
+		assert isinstance(url_str, str), f"URL must be a string: {url_str}"
+		if url_str.startswith('?'):
+			url_str = URLs.tag_search_root + url_str  # turn just a query to a rel url
+
+		url_split = URLs.split(url_str, unquote=False, to_abs=True)
+		assert url_split.path.startswith(URLs.tag_search_root), f"Not a tag search page: {url}"
+
+		url_split = URLs.override_query(
+			url_split, quote_mode=0,
+			page=None, view_adult='true' if view_adult else None
+		)
+		super(TagSearch, self).__init__()
+		object.__setattr__(self, "url", url_split)  # the way to go for frozen
+
+	@classmethod
+	def __tags_from_single_search_page(cls, page: BeautifulSoup):
+		"""Parse a single search page for tags."""
+
+		# page = BeautifulSoup(requests.get(url).text, parser)
+		tag_ols = page.find_all('ol', class_='tag index group')
+		assert len(tag_ols) == 1, f"Found {len(tag_ols)} tag lists"
+		tag_ol: _bsTag = tag_ols[0]
+		tag_lines = tag_ol.find_all('li')
+
+		return (Tag.build_from_li(tag_li) for tag_li in tag_lines)
+
+	def page_urls(self, n: int, skip_first=False):
+		return [
+			URLs.override_query(self.url, page=x if x > 1 else None).geturl()
+			for x in range(
+				2 if skip_first else 1,
+				max(1, n) + 1
+			)
+		]
+
+	@classmethod
+	def __detect_pages_number(cls, pager_ol: _bsTag):
+		lis: _t.List[_bsTag] = pager_ol.find_all('li')
+		last_li = None
+		while lis:
+			last_li = lis.pop()
+			if 'next' in last_li.get('class', []):
+				last_li = None
+				continue
+			break
+		assert last_li is not None, 'Something weird happened: pager found, pages - not'
+		n_str: str = last_li.a.text
+		n_str = n_str.strip()
+		return int(n_str)
+
+	def load_tags(self, cache=True):
+		"""Load all the tags from all the pages for the given search url."""
+		res = TagSet(
+			name=URLs.override_query(self.url, keep_blank_values=False, quote_mode=0).query
+		)
+
+		def dummy(tag_set: TagSet):
+			return tag_set
+
+		def cache_and_return(tag_set: TagSet):
+			cache_dir = Paths.tags_cache_dir / 'from_search'
+			if not cache_dir.exists():
+				cache_dir.mkdir(parents=True)
+
+			out_file = cache_dir / (tag_set.name + '.txt')
+			print(f'\nSaving cache file:\n\t{out_file}')
+			with out_file.open('wt', encoding='UTF-8', newline='\n') as f:
+				f.writelines(ln + '\n' for ln in tag_set.dumps(separator_line=''))
+
+			return tag_set
+
+		out_f = cache_and_return if cache else dummy
+
+		def get_page_soup(url: str):
+			print(url)
+			return BeautifulSoup(requests.get(url).text, parser)
+
+		first_url = URLs.override_query(self.url, page=None).geturl()
+		first_page_soup = get_page_soup(first_url)
+
+		pagers = first_page_soup.find_all('ol', class_='pagination')
+		if not pagers:
+			# only a single page result:
+			res.update(self.__tags_from_single_search_page(first_page_soup))
+			return out_f(res)
+
+		assert len(pagers) == 1, f'Multiple pagers found on search page: {first_url}'
+		n = self.__detect_pages_number(pagers[0])
+		assert n > 1, f'A really weird case: pager found, with pages, but biggest is {n}: {first_url}'
+
+		other_page_soups = [
+			get_page_soup(url)
+			for url in self.page_urls(n, skip_first=True)
+		]
+
+		res.update(
+			chain(*(
+				self.__tags_from_single_search_page(page_soup)
+				for page_soup in chain([first_page_soup], other_page_soups)
+			))
+		)
+		return out_f(res)
+
 
 if __name__ == '__main__':
 	tags = TagSet(name='QQQ')
-	tags._load_from_search_page(
-		"https://archiveofourown.org/tags/search?utf8=✓&query[name]=male shepard NOT female NOT she NOT edi NOT Ashley NOT Williams NOT Liara NOT Tali'Zorah NOT Miranda"
-	)
