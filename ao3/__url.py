@@ -116,3 +116,91 @@ class URLs(_StaticDataClass):
 
 		# noinspection PyArgumentList
 		return SplitResult(protocol, domain, path, *rest)
+
+	@classmethod
+	def quote_segments(
+		cls,
+		url_split: SplitResult,
+		quote_plus=False,
+	):
+		"""
+		Quote the urls in a smart way, keeping slashes in path but encoding
+		everything else.
+		"""
+		assert isinstance(url_split, SplitResult), "url_split must be a SplitResult instance"
+		protocol, domain, path, query, *rest = url_split
+
+		quote_f = cls.quote_plus if quote_plus else cls.quote
+
+		protocol, domain, *rest = (
+			quote_f(x, safe='') for x in (protocol, domain, *rest)
+		)
+		path = quote_f(path, safe='/')
+		query = quote_f(query, safe='&=')
+
+		# noinspection PyArgumentList
+		return SplitResult(protocol, domain, path, query, *rest)
+
+	@classmethod
+	def override_query(
+		cls,
+		url_split: SplitResult,
+		keep_blank_values=True,
+		strict_parsing=True,
+		errors='strict',
+		unquote_mode=2,
+		quote_mode=2,
+		**kwargs
+	):
+		"""
+		Return a copy of url_split, with modified query.
+
+		When no kwargs provided, this can be used to just clean up the query part of URL.
+
+		Unquote is (optionally) done before parsing query, quote - after.
+		"""
+
+		assert isinstance(url_split, SplitResult), "url_split must be a SplitResult instance"
+		protocol, domain, path, query_str, *rest = url_split
+
+		# noinspection PyUnusedLocal,PyShadowingNames
+		def dummy_quote(string: _t.AnyStr, *args, **kwargs):
+			return string
+
+		quote_f = {
+			1: cls.quote,
+			2: cls.quote_plus,
+		}.get(quote_mode, dummy_quote)
+		unquote_f = {
+			1: cls.unquote,
+			2: cls.unquote_plus,
+		}.get(unquote_mode, dummy_quote)
+
+		query_str = unquote_f(query_str.replace('&amp;', '&'), errors=errors)
+
+		query_list = cls.split_qs_list(
+			query_str, keep_blank_values=keep_blank_values, strict_parsing=strict_parsing,
+			errors=errors,
+		)
+		# replace/remove existing keys:
+		query_list: _t.List[_t.Tuple[_t.AnyStr, _t.AnyStr]] = [
+			(key, value) for key, value, original in (
+				(k, kwargs[k], False) if k in kwargs else (k, v, True)
+				for k, v in query_list
+			) if original or value is not None  # remove overrides with key=None
+		]
+		# add new keys:
+		present_keys = {k for k, v in query_list}
+		for k, v in kwargs.items():
+			if v is None or k in present_keys:
+				continue
+			query_list.append((k, v))
+
+		# compile query back:
+		# noinspection PyCallByClass
+		query_str = cls.unsplit_qs(
+			query_list, doseq=False, errors=errors, quote_via=quote_f
+		)
+
+		# noinspection PyArgumentList
+		return SplitResult(protocol, domain, path, query_str, *rest)
