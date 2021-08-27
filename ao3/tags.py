@@ -8,6 +8,7 @@ import typing as _t
 
 from enum import Enum
 from itertools import chain
+from collections import OrderedDict
 from dataclasses import dataclass as _dataclass
 from datetime import (
 	datetime as dt,
@@ -49,7 +50,31 @@ type_parse_map = {
 }
 
 
-_unknown_tag_usage = -1  # default <usage> value
+def _f_none():
+	return None
+
+
+_defaults_none = (None, _f_none)
+_defaults_str = ('', str)
+# all the tags need to ALWAYS have their own sets for refs, so even though
+# the default VALUE is None, default FACTORY returns a new set:
+_defaults_ref = (None, set)
+_tag_defaults = OrderedDict([
+	# default value, default factory
+	('type', _defaults_none),
+	('name', _defaults_str),
+	('url_token', _defaults_str),
+	('canonical', (False, lambda: False)),
+	('usages', (-1, lambda: -1)),
+	('date', _defaults_none),
+	('synonyms', _defaults_ref),
+	('parents', _defaults_ref),
+	('children', _defaults_ref),
+	('subtags', _defaults_ref),
+	('metatags', _defaults_ref),
+])
+_t_tag_ref = _t.Set[str]
+_unknown_tag_usage: int = _tag_defaults['usages'][0]  # default <usage> value
 _type = type
 NoneType = type(None)
 
@@ -105,10 +130,18 @@ class Tag(_t.NamedTuple):
 	"""
 	type: _t.Union[None, TagType, str]
 	name: str
-	url_token: str = None
-	canonical: _t.Optional[bool] = False
+
+	url_token: str = _tag_defaults['url_token'][0]
+
+	canonical: _t.Optional[bool] = _tag_defaults['canonical'][0]
 	usages: int = _unknown_tag_usage
-	date: _t.Optional[dt] = None
+	date: _t.Optional[dt] = _tag_defaults['date'][0]
+
+	synonyms: _t_tag_ref = _tag_defaults['synonyms'][0]
+	parents: _t_tag_ref = _tag_defaults['parents'][0]
+	children: _t_tag_ref = _tag_defaults['children'][0]
+	subtags: _t_tag_ref = _tag_defaults['subtags'][0]
+	metatags: _t_tag_ref = _tag_defaults['metatags'][0]
 
 	# noinspection PyAttributeOutsideInit
 	@property
@@ -146,11 +179,49 @@ class Tag(_t.NamedTuple):
 		cls,
 		calling_method: str,
 		*args,
-		url_token_already_clean=False  # we need to know whether it's already not an URL
+		url_token_already_clean=False,  # we need to know whether it's already not an URL
+		**kwargs
 	):
 		"""Perform check on input arguments and auto-clean them if possible."""
 
-		type, name, url_token, canonical, usages, date, *extras = args
+		def _args_gen(args_seq: _t.Iterable, kwargs_dict: dict):
+			"""Combine args and kwargs to just a sequence of positional args."""
+			for arg_nm, (default_val, default_f) in _tag_defaults.items():
+				if args_seq:
+					# if we're still iterating over positional args, they're priority:
+					arg, *args_seq = args_seq
+					yield arg
+					continue
+				if arg_nm in kwargs_dict:
+					# ... then use a kwarg if given:
+					yield kwargs_dict[arg_nm]
+				# ... otherwise, return a default:
+				yield default_f()
+
+		# noinspection PyShadowingNames
+		def _clean_ref(val, name: str, ref_name: str) -> _t_tag_ref:
+			"""Prepare ref-field value to be passed to the constructor."""
+			def _ensure_ref_item_type(item):
+				assert isinstance(item, str), (
+					f'Wrong {ref_name} item passed for tag <{name}>.{calling_method}(): {repr(item)}'
+				)
+				return item
+
+			default_f = _defaults_ref[1]
+			if not val:
+				return default_f()
+			if isinstance(val, str):
+				val = [val]
+
+			return default_f(
+				_ensure_ref_item_type(x) for x in val
+			)
+
+		(
+			type, name, url_token,
+			canonical, usages, date,
+			synonyms, parents, children, subtags, metatags,
+		) = _args_gen(args, kwargs)
 
 		assert name and isinstance(name, str), (
 			f'Invalid tag name passed to {cls.__name__}.{calling_method}(): {repr(name)}'
@@ -201,29 +272,76 @@ class Tag(_t.NamedTuple):
 		if date is None and usages > -1:
 			date = dt.now()
 
-		return type, name, url_token, canonical, usages, date
+		synonyms, parents, children, subtags, metatags = (
+			_clean_ref(val, name, ref_name)
+			for val, ref_name in (
+				(synonyms, 'synonyms'),
+				(parents, 'parents'),
+				(children, 'children'),
+				(subtags, 'subtags'),
+				(metatags, 'metatags'),
+			)
+		)
+		synonyms: _t_tag_ref = synonyms
+		parents: _t_tag_ref = parents
+		children: _t_tag_ref = children
+		subtags: _t_tag_ref = subtags
+		metatags: _t_tag_ref = metatags
+
+		return (
+			type, name, url_token,
+			canonical, usages, date,
+			synonyms, parents, children, subtags, metatags,
+		)
 
 	# noinspection PyShadowingBuiltins
 	@classmethod
 	def new_instance(
 		cls,
+		# let's just repeat all the args here explicitly, for IDE hints:
+
 		type: _t.Union[None, TagType, str],
 		name: str,
 		url_token: _t.Optional[str] = None,
+
 		canonical: _t.Optional[bool] = False,
 		usages: _t.Optional[int] = _unknown_tag_usage,
 		date: _t.Optional[dt] = None,
+
+		synonyms: _t_tag_ref = None,
+		parents: _t_tag_ref = None,
+		children: _t_tag_ref = None,
+		subtags: _t_tag_ref = None,
+		metatags: _t_tag_ref = None,
 	):
 		"""
-		Use this constructor method instead of just `Tag()`, because it performs
-		some extra arguments check/cleanup.
+		Use this factory instead of just `Tag()` constructor, because it ensures
+		proper initialization, turning the fields' values to an expected format.
 		"""
-		type, name, url_token, canonical, usages, date = cls._clean_args(
+		(
+			type, name, url_token, canonical, usages, date,
+			synonyms, parents, children, subtags, metatags,
+		) = cls._clean_args(
 			'new_instance',
 			type, name, url_token, canonical, usages, date,
+			synonyms, parents, children, subtags, metatags,
 		)
 
-		return cls(type, name, url_token=url_token, canonical=canonical, usages=usages, date=date,)
+		# put into kwargs only those that override the default values:
+		required_args = {'type', 'name'}
+		kwargs = {
+			arg_name: arg_val for arg_val, (arg_name, (def_val, def_factory)) in zip(
+				(
+					type, name, url_token, canonical, usages, date,
+					synonyms, parents, children, subtags, metatags,
+				),
+				_tag_defaults.items()
+			) if arg_name not in required_args and arg_val != def_val
+		}
+
+		return cls(
+			type, name, **kwargs
+		)
 
 	@classmethod
 	def build_from_li(cls, tag_li: _bsTag):
@@ -277,9 +395,16 @@ class Tag(_t.NamedTuple):
 
 	# noinspection PyShadowingBuiltins
 	def dumps(self) -> _t.Tuple[str, ...]:
-		"""Dump tag object to a string representation for saving to a file."""
+		"""
+		Dump tag object to a string representation for saving to a file.
 
-		type, name, url_token, canonical, usages, date = self._clean_args(
+		No trailing newline characters.
+		"""
+
+		(
+			type, name, url_token, canonical, usages, date,
+			synonyms, parents, children, subtags, metatags,
+		) = self._clean_args(
 			'dumps', *self,
 			url_token_already_clean=True
 		)
@@ -302,11 +427,12 @@ class Tag(_t.NamedTuple):
 
 		date_s = '' if date is None else self.date_str(date.astimezone(tz=tz.utc))
 
-		return self.reorder_to_dump(
-			id + val for id, val in zip(
-				_TagDumpConfig.dump_id,
-				(type, name, url_token, canonical_s, usages_s, date_s),
-			)
+		id_val_pairs = self.reorder_to_dump(zip(
+			_TagDumpConfig.dump_id,
+			(type, name, url_token, canonical_s, usages_s, date_s),
+		))
+		return tuple(
+			id + val for id, val in id_val_pairs
 		)
 
 	def sorting_key(self):
@@ -348,6 +474,12 @@ class _TagDumpConfig(_StaticDataClass):
 	dump_id = Tag(
 		type='-Tp:', name='-Tag:', url_token='-URL:',
 		canonical='-Canon:', usages='-Use:', date='-Dt:',
+
+		synonyms='\t=>Syn:',
+		parents='\t=>Parent:',
+		children='\t=>Child:',
+		subtags='\t=>Sub:',
+		metatags='\t=>Meta:',
 	)
 	dump_map = Tag(
 		type={
@@ -364,8 +496,6 @@ class _TagDumpConfig(_StaticDataClass):
 			True: '+',
 			False: '-',
 		},
-		usages=None,
-		date=None,
 	)
 
 
