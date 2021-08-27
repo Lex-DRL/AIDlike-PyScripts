@@ -49,44 +49,59 @@ type_parse_map = {
 }
 
 
-# def init_tag_cleanup_dec(class_obj: _t.Type[_t.NamedTuple]):
-# 	def new_instance(*args, **kwargs):
-# 		if len(args) > 4:
-# 			args_list = list(args)
-# 			args_list[4] = clean_url(args[4])
-# 			args = tuple(args_list)
-# 		if 'url_token' in kwargs:
-# 			kwargs['url_token'] = clean_url(kwargs['url_token'])
-# 		return class_obj(*args, **kwargs)
-#
-# 	return new_instance
-
-
 _unknown_tag_usage = -1  # default <usage> value
-
-
 _type = type
 NoneType = type(None)
 
 
-# @init_tag_cleanup_dec
 class Tag(_t.NamedTuple):
 	"""
-	NamedTuple representing a tag.
+	An AO3's tag is uniquely identified with it's name and (possibly) url token.
+	idk if there can be multiple tags with identical names but their URLs are
+	unique for sure.
 
-	For equality check and hashing, only name and url_token are used since they're
-	the ones uniquely identifying a tag.
+	So, by it's nature, tag is immutable, therefore this class is typed NamedTuple,
+	despite some ot it's "additional data" fields might be changed at runtime.
+	Besides, there will be a ton of tags in DB, so memory efficiency is important, too.
+
+	**WARNING:**
+	----------
+	Use `new_instance()` class method to create new instances, not just `Tag()`.
+	This is the only way to make a tag instance properly initialized.
+	If you don't, fields may contain whatever you put there, without any
+	checks/cleanup (and therefore, data won't be in an expected format).
+	Unfortunately, NamedTuple doesn't provide a way to override a built-in constructor.
+
+	Equality check and hashing
+	----------
+	For equality check and hashing, only **name** and **url_token** are used.
+	Beware about it. Since, if you just make a full slice, the newly created
+	regular tuple is already not equal to the tag instance.
+
 	Therefore:
 		* `(name, url_token) == tag_instance`
 		* `(type, name, url_token) != tag_instance`
 		* `(type, name, url_token, canonical, usages, date) != tag_instance`
 
-	So beware about it. Since, if you just make a full slice, the newly created
-	regular tuple is already not equal to the tag instance.
-
-	Similarly, if you have two tag instances with only other optional field varying
-	and you make a set of them / dict with them as keys - then only one of them
-	would get into the set.
+	Fields
+	----------
+	*type:*
+		First, but optional (not identifying) field. One of:
+			- `TagType` enum member if some of known tag types.
+			- A regular string if somehow there's no such tag type in the enum.
+			- None if not set.
+	**name**:
+		A (probably) unique non-empty string.
+	**url_token**:
+		Unique part of tag's url. I.e.: `/tags/{url_token}`. To save on characters, it's
+		stored as just '/' if it's equal to name.
+	*canonical:*
+		Bool indicating if tag is canonical. None if not set.
+	*usages:*
+		How many works are tagged with this one. -1 if not set.
+	*date:*
+		The last time this tag entry populated it's properties from the actual
+		tag page. It's used to cache tags locally but update them from time to time.
 	"""
 	type: _t.Union[None, TagType, str]
 	name: str
