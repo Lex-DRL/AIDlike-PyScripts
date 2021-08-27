@@ -1,2 +1,3 @@
-﻿# Benchmark caches:
+﻿# Exclude caches:
 /benchmarks/*
+/tags_cache/*
