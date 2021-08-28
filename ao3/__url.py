@@ -6,6 +6,7 @@ __author__ = 'Lex Darlog (DRL)'
 
 import typing as _t
 
+import re as _re
 from html import unescape as _html_unescape
 
 # noinspection SpellCheckingInspection
@@ -41,6 +42,29 @@ class URLs(_StaticDataClass):
 
 	tag_root = '/tags/'
 	tag_root_n = len(tag_root)
+	tag_url_re_match = _re.compile(
+		'(?:(?P<proto>http|https):)?'
+		'(?://'
+		'(?P<domain>(?:www\\.)?archiveofourown.org)(?::(?P<port>\\d+))?(//)?'
+		')?'
+		'(?:/|/{3,})?(?P<tags_root>tags/)'
+		'(?P<tag_token>[^?/]+)'
+	).match
+
+	"""
+<proto>:[
+	//
+	[
+		<login>[:<password>]@
+	]
+	<host>
+	[:<port>]
+]
+[/<URL-path>]
+[?<query>]
+[#<fragment>]
+	"""
+
 	tag_search_root = '/tags/search'
 
 	quote = _quote

@@ -6,6 +6,7 @@ __author__ = 'Lex Darlog (DRL)'
 
 import typing as _t
 
+import errno
 from enum import Enum
 from itertools import chain
 from collections import OrderedDict
@@ -208,6 +209,39 @@ class Tag(_t.NamedTuple):
 				yield default_f()
 
 		# noinspection PyShadowingNames
+		def _clean_url_token(url_token: str, name: str):
+			if url_token == _TagDumpConfig.token_match_name_indicator:
+				url_token = name
+
+			# url_token = 'https://archiveofourown.org/tags/Admiral%20Anderson'
+			# url_token = 'https://archiveofourown.org/tags/Background+Male+Shepard'
+			# url_token = '/tags/Mass%20Effect%20Trilogy'
+			# url_token = 'Mass Effect Trilogy'
+			# url_token = 'Mass Effect Trilogy/works'
+
+			if URLs.tag_url_re_match(url_token):
+				# the string matches tag-URL pattern, let's clean it:
+
+				# '+' inside path isn't treated by AO3 the same as %20. So unquote=1:
+				url_token: str = URLs.split(url_token, unquote=1, to_abs=False).path
+
+			# from here, url_token is either '/tags/token_string' or just '/token_string'.
+			# The first one is if a proper url provided - either abs or rel.
+			# the second one is if just a pure token itself was given.
+			# We need to detect which it is and check each accordingly:
+			if url_token.startswith(URLs.tag_root):
+				# the actual URL was given.
+				url_token = url_token[URLs.tag_root_n:].strip('/')
+				# ... and in case there was something like '/tags/token_string/works':
+				url_token = url_token.split('/')[0]
+			else:
+				# a pure token name was given.
+				url_token = url_token.strip('/')
+			# but if so, it shouldn't contain any slashes, which we assert below.
+
+			return url_token
+
+		# noinspection PyShadowingNames
 		def _clean_ref(val, name: str, ref_name: str) -> _t_tag_ref:
 			"""Prepare ref-field value to be passed to the constructor."""
 			def _ensure_ref_item_type(item):
@@ -236,32 +270,7 @@ class Tag(_t.NamedTuple):
 			f'Invalid tag name passed to {cls.__name__}.{calling_method}(): {repr(name)}'
 		)
 
-		if url_token == _TagDumpConfig.token_match_name_indicator:
-			url_token = name
-
-		# url_token = 'https://archiveofourown.org/tags/Admiral%20Anderson'
-		# url_token = 'https://archiveofourown.org/tags/Background+Male+Shepard'
-		# url_token = '/tags/Mass%20Effect%20Trilogy'
-		# url_token = 'Mass Effect Trilogy'
-		# url_token = 'Mass Effect Trilogy/works'
-
-		# '+' inside path isn't treated by AO3 the same as %20. So unquote=1:
-		url_token: str = URLs.split(url_token, unquote=1, to_abs=False).path
-
-		# from here, url_token is either '/tags/token_string' or just '/token_string'.
-		# The first one is if a proper url provided - eithr abs or rel.
-		# the second one is if just a pure token itself was given.
-		# We need to detect which it is and check each accordingly:
-		if url_token.startswith(URLs.tag_root):
-			# the actual URL was given.
-			url_token = url_token[URLs.tag_root_n:].strip('/')
-			# ... and in case there was something like '/tags/token_string/works':
-			url_token = url_token.split('/')[0]
-		else:
-			# a pure token name was given.
-			url_token = url_token.lstrip('/')
-			# but if so, it shouldn't contain any slashes, which we assert below.
-
+		url_token = _clean_url_token(url_token, name)
 		assert isinstance(url_token, str) and (
 			_TagDumpConfig.token_match_name_indicator not in url_token
 		), (
@@ -695,7 +704,19 @@ class TagSearch:
 			if not cache_dir.exists():
 				cache_dir.mkdir(parents=True)
 
-			out_file = cache_dir / (tag_set.name + '.txt')
+			file_name = tag_set.name
+			file_name_chars = set(file_name)
+			placeholder = Paths.reserved_placeholder
+			for reserved_char in Paths.reserved_chars:
+				if reserved_char in file_name_chars:
+					file_name = file_name.replace(reserved_char, placeholder)
+			out_file = cache_dir / (file_name + '.txt')
+			if out_file.is_reserved():
+				raise OSError(
+					errno.EPERM, 'Attempt to create a file with reserved special names',
+					out_file
+				)
+
 			print(f'\nSaving cache file:\n\t{out_file}')
 			with out_file.open('wt', encoding='UTF-8', newline='\n') as f:
 				f.writelines(ln + '\n' for ln in tag_set.dumps(separator_line=_empty_str))
