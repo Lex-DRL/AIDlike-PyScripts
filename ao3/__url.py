@@ -32,6 +32,8 @@ def _dummy(x, *args, **kwargs):
 
 
 class URLs(_StaticDataClass):
+	"""Static class with package-wise constants and functions related to URL paths."""
+
 	protocol = 'https'
 	protocol_prefix = 'https://'
 	domain = 'archiveofourown.org'
