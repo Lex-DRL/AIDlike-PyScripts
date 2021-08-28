@@ -14,6 +14,10 @@ from datetime import (
 	datetime as dt,
 	timezone as tz,
 )
+from json import (
+	dumps as _json_dumps,
+	loads as _json_loads,
+)
 
 import requests
 # noinspection PyProtectedMember
@@ -54,8 +58,10 @@ def _f_none():
 	return None
 
 
+_empty_str = ''  # to use the same string object across different tags
+
 _defaults_none = (None, _f_none)
-_defaults_str = ('', str)
+_defaults_str = (_empty_str, str)
 # all the tags need to ALWAYS have their own sets for refs, so even though
 # the default VALUE is None, default FACTORY returns a new set:
 _defaults_ref = (None, set)
@@ -179,10 +185,13 @@ class Tag(_t.NamedTuple):
 		cls,
 		calling_method: str,
 		*args,
-		url_token_already_clean=False,  # we need to know whether it's already not an URL
 		**kwargs
 	):
-		"""Perform check on input arguments and auto-clean them if possible."""
+		"""
+		Perform check on input arguments and auto-clean them if possible.
+
+		If '/' is provided as **url_token**, it's value is taken from name.
+		"""
 
 		def _args_gen(args_seq: _t.Iterable, kwargs_dict: dict):
 			"""Combine args and kwargs to just a sequence of positional args."""
@@ -202,7 +211,7 @@ class Tag(_t.NamedTuple):
 		def _clean_ref(val, name: str, ref_name: str) -> _t_tag_ref:
 			"""Prepare ref-field value to be passed to the constructor."""
 			def _ensure_ref_item_type(item):
-				assert isinstance(item, str), (
+				assert isinstance(item, str) and item, (
 					f'Wrong {ref_name} item passed for tag <{name}>.{calling_method}(): {repr(item)}'
 				)
 				return item
@@ -227,25 +236,34 @@ class Tag(_t.NamedTuple):
 			f'Invalid tag name passed to {cls.__name__}.{calling_method}(): {repr(name)}'
 		)
 
-		if (
-			url_token != _TagDumpConfig.token_match_name_indicator
-			and not url_token_already_clean
-		):
-			# url_token = 'https://archiveofourown.org/tags/Admiral%20Anderson'
-			# url_token = '/tags/Mass%20Effect%20Trilogy'
-			# url_token = 'Mass Effect Trilogy'
-			# url_token = 'Mass Effect Trilogy/works'
-			url_token: str = URLs.split(url_token, unquote=True, to_abs=False).path
-			if url_token.startswith(URLs.tag_root):
-				url_token = url_token[URLs.tag_root_n:]
+		if url_token == _TagDumpConfig.token_match_name_indicator:
+			url_token = name
+
+		# url_token = 'https://archiveofourown.org/tags/Admiral%20Anderson'
+		# url_token = 'https://archiveofourown.org/tags/Background+Male+Shepard'
+		# url_token = '/tags/Mass%20Effect%20Trilogy'
+		# url_token = 'Mass Effect Trilogy'
+		# url_token = 'Mass Effect Trilogy/works'
+
+		# '+' inside path isn't treated by AO3 the same as %20. So unquote=1:
+		url_token: str = URLs.split(url_token, unquote=1, to_abs=False).path
+
+		# from here, url_token is either '/tags/token_string' or just '/token_string'.
+		# The first one is if a proper url provided - eithr abs or rel.
+		# the second one is if just a pure token itself was given.
+		# We need to detect which it is and check each accordingly:
+		if url_token.startswith(URLs.tag_root):
+			# the actual URL was given.
+			url_token = url_token[URLs.tag_root_n:].strip('/')
+			# ... and in case there was something like '/tags/token_string/works':
 			url_token = url_token.split('/')[0]
-			if url_token == name:
-				url_token = _TagDumpConfig.token_match_name_indicator
+		else:
+			# a pure token name was given.
+			url_token = url_token.lstrip('/')
+			# but if so, it shouldn't contain any slashes, which we assert below.
 
 		assert isinstance(url_token, str) and (
-			not url_token
-			or url_token == _TagDumpConfig.token_match_name_indicator
-			or _TagDumpConfig.token_match_name_indicator not in url_token
+			_TagDumpConfig.token_match_name_indicator not in url_token
 		), (
 			f'Wrong URL for tag <{name}>.{calling_method}(): {repr(url_token)}'
 		)
@@ -265,6 +283,15 @@ class Tag(_t.NamedTuple):
 		assert isinstance(usages, int), (
 			f'Wrong usages for tag <{name}>.{calling_method}(): {repr(usages)}'
 		)
+
+		# use the same object for empty strings to further reduce memory footprint:
+		type, url_token = (
+			_empty_str if (isinstance(x, str) and x == _empty_str) else x
+			for x in (type, url_token)
+		)
+		# ... or use the same object for name and token if they're identical:
+		if url_token == name:
+			url_token = name
 
 		type: _t.Union[None, TagType, str] = type
 		canonical: _t.Optional[bool] = canonical
@@ -377,7 +404,7 @@ class Tag(_t.NamedTuple):
 	def date_str(cls, date: _t.Optional[dt]):
 		clean_date = cls._clean_date('date_str', date)
 		if clean_date is None:
-			return ''
+			return _empty_str
 		return clean_date.strftime(_TagDumpConfig.date_format)
 
 	@classmethod
@@ -387,11 +414,20 @@ class Tag(_t.NamedTuple):
 		return dt.strptime(date_str, _TagDumpConfig.date_format).astimezone(in_timezone)
 
 	@classmethod
-	def reorder_to_dump(cls, items: _t.Iterable):
+	def _reorder_fields_to_dump(
+		cls, items: _t.Iterable[_t.Tuple[str, str]]
+	) -> _t.Tuple[_t.Tuple[str, str], ...]:
 		"""Reorder tag elements from tuple to dumped order."""
 		# noinspection PyShadowingBuiltins
-		type, name, url_token, canonical, usages, date, *left = items
-		return name, url_token, type, canonical, usages, date
+		type, name, url_token, canonical, usages, date, *refs = items
+
+		optional_fields = (
+			(dump_id, val) for dump_id, val in (
+				type, canonical, usages, date, *refs
+			) if val
+		)
+
+		return (name, url_token, *optional_fields)
 
 	# noinspection PyShadowingBuiltins
 	def dumps(self) -> _t.Tuple[str, ...]:
@@ -401,18 +437,17 @@ class Tag(_t.NamedTuple):
 		No trailing newline characters.
 		"""
 
-		(
-			type, name, url_token, canonical, usages, date,
-			synonyms, parents, children, subtags, metatags,
-		) = self._clean_args(
+		type, name, url_token, canonical, usages, date, *refs = self._clean_args(
 			'dumps', *self,
-			url_token_already_clean=True
 		)
+
+		if url_token == name:
+			url_token = _TagDumpConfig.token_match_name_indicator
 
 		dump_maps = _TagDumpConfig.dump_map
 
 		if not type:
-			type = ''
+			type = _empty_str
 		if isinstance(type, TagType):
 			# noinspection PyTypeChecker
 			type: str = dump_maps.type[type]
@@ -423,13 +458,37 @@ class Tag(_t.NamedTuple):
 
 		if usages is None or usages < 0:
 			usages = -1
-		usages_s: str = '' if usages < 0 else str(usages)
+		usages_s: str = _empty_str if usages < 0 else str(usages)
 
-		date_s = '' if date is None else self.date_str(date.astimezone(tz=tz.utc))
+		date_s = _empty_str if date is None else self.date_str(date.astimezone(tz=tz.utc))
 
-		id_val_pairs = self.reorder_to_dump(zip(
+		def check_ref_item(item, ref_name: str):
+			if not item:
+				return _empty_str
+			assert isinstance(item, str), (
+				f'Wrong {ref_name} item found at <{name}> tag dump: {repr(item)}'
+			)
+			return item
+
+		def dump_ref(ref_set: _t_tag_ref, ref_name: str):
+			if not ref_set:
+				return _empty_str
+			sorted_items = sorted(
+				check_ref_item(x, ref_name) for x in ref_set
+				if x
+			)
+			return _json_dumps(sorted_items, ensure_ascii=False)
+
+		refs_s = [
+			dump_ref(ref_set, ref_name) for ref_set, ref_name in zip(
+				refs,
+				('synonyms', 'parents', 'children', 'subtags', 'metatags',),
+			)
+		]
+
+		id_val_pairs = self._reorder_fields_to_dump(zip(
 			_TagDumpConfig.dump_id,
-			(type, name, url_token, canonical_s, usages_s, date_s),
+			(type, name, url_token, canonical_s, usages_s, date_s, *refs_s),
 		))
 		return tuple(
 			id + val for id, val in id_val_pairs
@@ -441,7 +500,7 @@ class Tag(_t.NamedTuple):
 		# noinspection PyShadowingBuiltins
 		def type_string(type):
 			if type is None:
-				return ''
+				return _empty_str
 			if isinstance(type, str):
 				return type
 			assert isinstance(type, TagType)
@@ -492,7 +551,7 @@ class _TagDumpConfig(_StaticDataClass):
 		name=None,
 		url_token=None,
 		canonical={
-			None: '',
+			None: _empty_str,
 			True: '+',
 			False: '-',
 		},
@@ -501,9 +560,9 @@ class _TagDumpConfig(_StaticDataClass):
 
 class TagSet(_t.Set[Tag]):
 
-	name: str = ''
+	name: str = _empty_str
 
-	def __init__(self, *args, name: str = ''):
+	def __init__(self, *args, name: str = _empty_str):
 		super(TagSet, self).__init__(*args)
 		if name:
 			self.name = name
@@ -514,7 +573,7 @@ class TagSet(_t.Set[Tag]):
 			res = res.replace('(', f'({repr(self.name)}: ', 1)
 		return res
 
-	def dumps(self, separator_line=''):
+	def dumps(self, separator_line=_empty_str):
 		"""
 		Generator iterating over all the lines in a combined dump
 		of all the tags in this set.
@@ -639,7 +698,7 @@ class TagSearch:
 			out_file = cache_dir / (tag_set.name + '.txt')
 			print(f'\nSaving cache file:\n\t{out_file}')
 			with out_file.open('wt', encoding='UTF-8', newline='\n') as f:
-				f.writelines(ln + '\n' for ln in tag_set.dumps(separator_line=''))
+				f.writelines(ln + '\n' for ln in tag_set.dumps(separator_line=_empty_str))
 
 			return tag_set
 
