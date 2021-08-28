@@ -29,6 +29,7 @@ from bs4 import (
 
 from .__url import URLs
 from .__paths import _StaticDataClass, Paths
+from .async_request import get_pages as _get_pages_async
 
 
 parser = 'lxml'
@@ -725,15 +726,12 @@ class TagSearch:
 
 		out_f = cache_and_return if cache else dummy
 
-		def get_page_soup(url: str):
-			print(url)
-			return BeautifulSoup(requests.get(url).text, parser)
-
 		first_url = URLs.override_query(
 			self.url, page=None, query_sort_key_f=self.__query_sort_key,
 			**self.__search_override_query
 		).geturl()
-		first_page_soup = get_page_soup(first_url)
+		print(first_url)
+		first_page_soup = BeautifulSoup(requests.get(first_url).text, parser)
 
 		pagers = first_page_soup.find_all('ol', class_='pagination')
 		if not pagers:
@@ -745,16 +743,22 @@ class TagSearch:
 		n = self.__detect_pages_number(pagers[0])
 		assert n > 1, f'A really weird case: pager found, with pages, but biggest is {n}: {first_url}'
 
-		other_page_soups = [
-			get_page_soup(url)
-			for url in self.page_urls(n, skip_first=True)
-		]
+		print(f'Pages: {n}\n')
+		page_soups = [first_page_soup, ]
+		other_pages_content = _get_pages_async(
+			self.page_urls(n, skip_first=True), print_urls=True
+		)
+		for url, code, html in other_pages_content:
+			assert code == 200, f"Server error {code}: {url}"
+		print(f'\nLoaded: {len(other_pages_content) + 1}\n')
+
+		page_soups.extend(
+			BeautifulSoup(html, parser)
+			for url, code, html in other_pages_content
+		)
 
 		res.update(
-			chain(*(
-				self.__tags_from_single_search_page(page_soup)
-				for page_soup in chain([first_page_soup], other_page_soups)
-			))
+			chain(*map(self.__tags_from_single_search_page, page_soups))
 		)
 		return out_f(res)
 
