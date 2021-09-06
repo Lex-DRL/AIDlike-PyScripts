@@ -23,7 +23,7 @@ from urllib.parse import (
 	SplitResult,
 )
 
-from .__paths import _StaticDataClass
+from common import StaticDataClass as _StaticDataClass
 
 
 # noinspection PyUnusedLocal

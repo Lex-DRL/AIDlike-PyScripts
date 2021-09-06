@@ -7,15 +7,7 @@ __author__ = 'Lex Darlog (DRL)'
 import typing as _t
 
 from pathlib import Path
-from dataclasses import dataclass as _dataclass
-
-
-@_dataclass(init=False, frozen=True)
-class _StaticDataClass:
-	"""Base for static (non-instantiable) classes."""
-
-	def __init__(self):
-		raise TypeError(f"<{self.__class__.__name__}> is non-instantiable data class")
+from common import StaticDataClass as _StaticDataClass
 
 
 class Paths(_StaticDataClass):
