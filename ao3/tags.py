@@ -27,7 +27,10 @@ from bs4 import (
 	Tag as _bsTag
 )
 
-from common import StaticDataClass as _StaticDataClass
+from common import (
+	CustomHash as _CustomHash,
+	StaticDataClass as _StaticDataClass,
+)
 from .__url import URLs
 from .__paths import Paths
 from .async_request import get_pages as _get_pages_async
@@ -88,7 +91,7 @@ _type = type
 NoneType = type(None)
 
 
-class Tag(_t.NamedTuple):
+class Tag(_t.NamedTuple, _CustomHash):
 	"""
 	An AO3's tag is uniquely identified with it's name and (possibly) url token.
 	idk if there can be multiple tags with identical names but their URLs are
@@ -152,22 +155,9 @@ class Tag(_t.NamedTuple):
 	subtags: _t_tag_ref = _tag_defaults['subtags'][0]
 	metatags: _t_tag_ref = _tag_defaults['metatags'][0]
 
-	# noinspection PyAttributeOutsideInit
 	@property
-	def id(self):
-		"""The actual value the tag is represented as during hashing/equality check."""
+	def hash_id(self):
 		return self.name, self.url_token
-
-	def __eq__(self, other):
-		return self.id == (
-			other.id if isinstance(other, Tag) else other
-		)
-
-	def __ne__(self, other):
-		return not self.__eq__(other)
-
-	def __hash__(self):
-		return hash(self.id)
 
 	@classmethod
 	def _clean_date(cls, calling_method: str, date: _t.Optional[dt], name: str = None):
