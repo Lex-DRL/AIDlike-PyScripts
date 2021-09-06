@@ -7,6 +7,7 @@ __author__ = 'Lex Darlog (DRL)'
 import typing as _t
 
 import abc as _abc
+from pathlib import Path
 from dataclasses import dataclass as _dataclass
 
 
@@ -45,3 +46,6 @@ class CustomHash(_abc.ABC):
 
 	def __hash__(self):
 		return hash(self.hash_id)
+
+
+root_dir = Path(__file__).parent
