@@ -1,0 +1,3 @@
+﻿# Exclude the actual content
+/_src/*
+Combined*.txt
