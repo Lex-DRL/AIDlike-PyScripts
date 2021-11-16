@@ -8,19 +8,11 @@ __author__ = 'Lex Darlog (DRL)'
 import typing as _t
 
 import abc as _abc
-from pathlib import Path
 from dataclasses import dataclass as _dataclass
+from pathlib import Path as _Path
 
 
-root_dir = Path(__file__).parent
-
-
-@_dataclass(init=False, frozen=True)
-class StaticDataClass:
-	"""Base for static (non-instantiable) classes."""
-
-	def __init__(self):
-		raise TypeError(f"<{self.__class__.__name__}> is non-instantiable data class")
+root_dir = _Path(__file__).parent
 
 
 class CustomHash(_abc.ABC):
@@ -50,6 +42,14 @@ class CustomHash(_abc.ABC):
 
 	def __hash__(self):
 		return hash(self.hash_id)
+
+
+@_dataclass(init=False, frozen=True)
+class StaticDataClass:
+	"""Base for static (non-instantiable) classes."""
+
+	def __init__(self):
+		raise TypeError(f"<{self.__class__.__name__}> is non-instantiable data class")
 
 
 _byte_kilo_sizes = ('', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi')
