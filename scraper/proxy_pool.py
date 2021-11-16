@@ -8,10 +8,14 @@ import typing as _t
 from typing import (
 	Optional as _o,
 	Union as _u,
+	Callable as _c,
 	List as _l,
 	Tuple as _tpl,
+	Set as _s,
+	Dict as _d,
 )
 
+import abc as _abc
 from dataclasses import dataclass as _dataclass
 from datetime import datetime as _dt
 import json as _json
@@ -20,7 +24,7 @@ from pathlib import Path as _Path
 from pydantic import (
 	BaseModel as _BaseModel,
 	Field as _Field,
-	validator as _validator,
+	validator as _v,
 	ValidationError as _ValidError,
 )
 from pydantic.dataclasses import dataclass as _pyd_dataclass
@@ -28,6 +32,10 @@ import requests as _requests
 
 from common import StaticDataClass as _StaticDataClass
 import enum_utils as _enum
+from pyd_utils import (
+	ValidatorsIfNot as _vNot,
+	v_func as _v_func,
+)
 
 _o_str = _o[str]
 _o_dig = _u[None, int, float]
@@ -37,9 +45,25 @@ module_dir = _Path(__file__).parent
 
 
 class ProxyID(_t.NamedTuple):
-	proto: str
 	domain: str
 	port: int
+
+
+@_enum.map_all_cases(unknown=True)
+class Anonymity(_enum.Enum):
+	Unknown = None
+	Transparent = 0
+	Anonymous = 1
+	Elite = 2
+
+
+@_enum.map_all_cases(unknown=True)
+class ProxySource(_enum.Enum):
+	Unknown = None
+	GeoNode = 0
+	FreeProxyList = 1
+
+	Custom = 99
 
 
 @_dataclass
@@ -56,25 +80,9 @@ class UpTime:
 		self.n_used += success
 
 
-@_enum.map_all_cases(unknown=True)
-class Anonymity(_enum.Enum):
-	Unknown = -1  # for ide hints
-	Transparent = 0
-	Anonymous = 1
-	Elite = 2
-
-
-@_enum.map_all_cases(unknown=True)
-class ProxySource(_enum.Enum):
-	Unknown = -1  # for ide hints
-	GeoNode = 0
-	FreeProxyList = 1
-
-	Custom = 99
-
-
 @_dataclass
-class ProxyStats:
+class ProxyData:
+	proto: _u[str, _l[str], _tpl_str] = ''
 	country: str = ''
 	city: str = ''
 	last_worked: _t.Optional[_dt] = None
@@ -84,8 +92,10 @@ class ProxyStats:
 	anon: Anonymity = Anonymity.Unknown
 	source: ProxySource = ProxySource.Unknown
 
+	orig_data: _o[_BaseModel] = None
 
-class UserAgentPool(_StaticDataClass):
+
+class UserAgentPool(_abc.ABC, _StaticDataClass):
 	pass
 
 
@@ -94,19 +104,20 @@ class _UserAgentPoolGeoNode(UserAgentPool):
 
 	class DataJSON(_BaseModel):
 		class DataItem(_BaseModel):
-			id: str = _Field('', alias='_id')
 			ip: str = ''
 			port: int = 0
 			host: str = _Field('', alias='hostName')
+			id: str = _Field('', alias='_id')
+
 			protocols: _tpl_str = _Field(default_factory=tuple)
 
-			asn: str = ''
-			city: str = ''
+			anon: Anonymity = _Field(Anonymity.Unknown, alias='anonymityLevel')
 			country: str = ''
+			city: str = ''
 			region: str = ''
 			isp: str = ''
 			org: str = ''
-			anon: Anonymity = _Field(Anonymity.Unknown, alias='anonymityLevel')
+			asn: str = ''
 
 			created: _o[_dt] = _Field(None, alias='created_at')
 			updated: _o[_dt] = _Field(None, alias='updated_at')
@@ -122,34 +133,43 @@ class _UserAgentPoolGeoNode(UserAgentPool):
 			uptime_tries: _o[int] = _Field(None, alias='upTimeTryCount')
 			working: _o_dig = _Field(None, alias='workingPercent')
 
-			@_validator('anon', pre=True)
-			def anon_map(cls, v):
+			_v_port = _vNot('port', pre=True).int
+
+			_v_ip = _vNot('ip', pre=True).str
+			_v_host = _vNot('host', pre=True).str
+			_v_id = _vNot('id', pre=True).str
+
+			@_v('anon', pre=True)
+			def _v_anon(cls, v):
 				return Anonymity[v]
 
-			def false_to_zero(cls, v):
-				return v or 0
+			_v_country = _vNot('country', pre=True).str
+			_v_city = _vNot('city', pre=True).str
+			_v_region = _vNot('region', pre=True).str
+			_v_isp = _vNot('isp', pre=True).str
+			_v_org = _vNot('org', pre=True).str
+			_v_asn = _vNot('asn', pre=True).str
 
-			val_port = _validator('port', pre=True, allow_reuse=True)(false_to_zero)
+			_v_created = _vNot('created', pre=True).none
+			_v_updated = _vNot('updated', pre=True).none
+			_v_checked = _vNot('checked', pre=True).none
 
-			def false_to_empty_str(cls, v):
-				return v or ''
+			_v_google = _vNot('google', pre=True).bool
+			_v_speed = _vNot('speed', pre=True).none
+			_v_latency = _vNot('latency', pre=True).none
+			_v_response = _vNot('response', pre=True).none
 
-			_v_ip = _validator('ip', pre=True, allow_reuse=True)(false_to_empty_str)
-			_v_host = _validator('host', pre=True, allow_reuse=True)(false_to_empty_str)
-
-			_v_asn = _validator('asn', pre=True, allow_reuse=True)(false_to_empty_str)
-			_v_city = _validator('city', pre=True, allow_reuse=True)(false_to_empty_str)
-			_v_country = _validator('country', pre=True, allow_reuse=True)(false_to_empty_str)
-			_v_region = _validator('region', pre=True, allow_reuse=True)(false_to_empty_str)
-			_v_isp = _validator('isp', pre=True, allow_reuse=True)(false_to_empty_str)
-			_v_org = _validator('org', pre=True, allow_reuse=True)(false_to_empty_str)
+			_v_uptime = _vNot('uptime', pre=True).none
+			_v_uptime_success = _vNot('uptime_success', pre=True).none
+			_v_uptime_tries = _vNot('uptime_tries', pre=True).none
+			_v_working = _vNot('working', pre=True).none
 
 		total: int
 		page: int
 		limit: int
 		data: _tpl[DataItem, ...] = _Field(default_factory=tuple)
 
-	pass
+	pass  # _UserAgentPoolGeoNode
 
 
 # https://proxylist.geonode.com/api/proxy-list?limit=500&page=1&sort_by=lastChecked&sort_type=desc&protocols=https
