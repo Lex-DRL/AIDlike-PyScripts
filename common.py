@@ -52,6 +52,68 @@ class StaticDataClass:
 		raise TypeError(f"<{self.__class__.__name__}> is non-instantiable data class")
 
 
+class TrackingMeta(type):
+	"""
+	Meta-class which keeps track of all the classes inherited from it.
+
+	Use it:
+
+	*
+		if the defined class doesn't use any other metaclasses, just do:
+
+		``class MyClass(metaclass=TrackingMeta): pass``
+	*
+		otherwise (if you use other meta-class, even indirectly),
+		you need to create a combined metaclass first (multiple
+		inheritance, `TrackingMeta` being the last) and use it instead.
+	*
+		To use it with ABC, there are pre-defined `TrackingABCMeta` and
+		`TrackingABC` classes.
+	"""
+
+	def __new__(mcs, *args, **kwargs):
+		cls = super().__new__(mcs, *args, **kwargs)
+		_t_track_set = _t.Set[TrackingMeta]
+		_t_track_hierarchy = _t.Dict[TrackingMeta, _t_track_set]
+
+		try:
+			children_dict: _t_track_hierarchy = mcs.__children_by_class
+		except AttributeError:
+			children_dict: _t_track_hierarchy = dict()
+			mcs.__children_by_class = children_dict
+		if cls not in children_dict:
+			children_dict[cls]: _t_track_set = set()
+
+		for predefined_class, c_set in children_dict.items():
+			if issubclass(cls, predefined_class) and cls is not predefined_class:
+				c_set.add(cls)
+
+		return cls
+
+	@property
+	def _tracked_children(cls):
+		return tuple(cls.__children_by_class[cls])
+
+	@property
+	def _whole_tracking(cls):
+		_t_track_set = _t.Tuple[TrackingMeta, ...]
+		_t_track_hierarchy = _t.Dict[TrackingMeta, _t_track_set]
+		res: _t_track_hierarchy = {
+			k: tuple(v) for k, v in cls.__children_by_class.items()
+		}
+		return res
+
+
+class TrackingABCMeta(_abc.ABCMeta, TrackingMeta):
+	"""Abstract meta-class which keeps track of all the classes inherited from it."""
+	pass
+
+
+class TrackingABC(_abc.ABC, metaclass=TrackingABCMeta):
+	"""Abstract base class which keeps track of all the classes inherited from it."""
+	pass
+
+
 _byte_kilo_sizes = ('', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi')
 _byte_yobi = 'Yi'
 _byte_kilo_step = 1024.0
