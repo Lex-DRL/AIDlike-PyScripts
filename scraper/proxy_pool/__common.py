@@ -24,7 +24,7 @@ from common import (
 	StaticDataClass as _StaticDataClass,
 	TrackingABC as _TrackingABC,
 )
-import enum_utils as _enum
+import drl_enum as _enum
 from drl_pydantic import (
 	ValidatorsIfNot as _vNot,
 	v_func as _v_func,
