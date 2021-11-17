@@ -175,3 +175,37 @@ def format_thousands(number: _t.Union[int, float, str], spacer="'"):
 		number_str, piece = number_str[:-3], number_str[-3:]
 		reversed_pieces.append(piece)
 	return sign + spacer.join(reversed(reversed_pieces))
+
+
+def decorators_combine(*decs, reverse=False):
+	"""
+	Combine multiple decorators to one::
+
+		@outer
+		@inner
+		def my_func():
+			pass
+
+		# is the same as:
+		@decorators_combine(inner, outer)
+		def my_func():
+			pass
+
+		# or:
+		def my_func():
+			pass
+		new_dec = decorators_combine(outer, inner, reverse=True)
+		my_func = new_dec(my_func)
+
+	:param reverse:
+		if ``True``, reverses the order decorators are applied. I.e., you list them
+		left-to-right as if you were typing them top-to-bottom.
+		Normally, it's the other way around: decorators wrap each other as you put
+		them on top of one another.
+	"""
+	def decorator(f):
+		decs_seq = reversed(decs) if reverse else decs
+		for dec in decs_seq:
+			f = dec(f)
+		return f
+	return decorator
