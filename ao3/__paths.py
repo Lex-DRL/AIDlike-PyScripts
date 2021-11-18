@@ -18,3 +18,4 @@ class _StaticDataClass:
 
 class Paths(_StaticDataClass):
 	package_dir = Path(__file__).parent
+	benchmark_cache_dir = package_dir / 'benchmarks'
