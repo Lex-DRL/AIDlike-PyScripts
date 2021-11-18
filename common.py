@@ -242,6 +242,160 @@ def _qual_name_for_decorator(obj: _tA) -> _str:
 		return _obj_name_for_decorator(obj)
 
 
+_t_abc_cls_f = _c[[], type]
+_t_abc_error_format_f = _c[[type], _str]
+_t_abc_error_f = _c[[type, _t_abc_error_format_f], _tA]
+
+
+def __abc_method_error(
+	child_error_f: _t_abc_error_f, parent_error_f: _t_abc_error_f,
+	abc_cls_f: _t_abc_cls_f, cls=False, work_on_abc=False,
+):
+	"""
+	Abstract-method decorator raising an error if the method is called from
+	inherited (concrete) class.
+
+	The actual error-raising function is passed as 1st argument.
+	It receives concrete class *(``cls`` passed to a method, even when the method
+	takes ``self``)* and another function that formats error message from it.
+	"""
+	if work_on_abc:
+		def dummy_error_f(cls_obj: type, error_format_f: _t_abc_error_format_f):
+			pass
+		parent_error_f = dummy_error_f
+
+	def pass_cls(cls_or_self):
+		return cls_or_self
+
+	def cls_from_self(cls_or_self):
+		return cls_or_self.__class__
+
+	cls_f = pass_cls if cls else cls_from_self
+
+	def decorator(f: _c):
+		def format_child_error(cls_obj: type):
+			abc_cls = abc_cls_f()
+			abc_cls_name = _qual_name_for_decorator(abc_cls)
+			f_name = _obj_name_for_decorator(f)
+			return (
+				f'Concrete {cls_obj} must override the inherited '
+				f'{abc_cls_name}.{f_name}() abstract method.'
+			)
+
+		def format_parent_error(cls_obj: type):
+			f_name = _obj_name_for_decorator(f)
+			return f"The method {f_name}() can't be called on abstract {cls_obj}."
+
+		@wraps(f)
+		def wrapper(cls_or_self: _u[type, object], *args, **kwargs):
+			cls_obj = cls_f(cls_or_self)
+			child_error_f(cls_obj, format_child_error)
+			parent_error_f(cls_obj, format_parent_error)
+			return f(cls_or_self, *args, **kwargs)
+
+		if work_on_abc:
+			# noinspection SpellCheckingInspection
+			wrapper.__isabstractmethod__ = False
+		return wrapper
+	return decorator
+
+
+def abc_method_assert(abc_cls_f: _t_abc_cls_f, cls=False, work_on_abc=False, ):
+	"""
+	Abstract-method decorator which asserts the method is not called from
+	inherited (concrete) class.
+
+	Used with ``abc.abstractmethod``.
+
+	Usage::
+
+		def get_C():
+			return C
+
+		class C(metaclass=ABCMeta):
+			@abc_method_assert(get_C)
+			@abstractmethod
+			def my_method(self, ...):
+				...
+
+			@classmethod
+			@abc_method_assert(get_C, cls=True)
+			@abstractmethod
+			def my_class_method(self, ...):
+				...
+
+	:param abc_cls_f: Function returning the actual ABC class the method is defined in.
+	:param cls: Whether @classmethod is also applied (it should be done after/above).
+	:param work_on_abc:
+		if ``True``, Lets you throw an error in inherited class but still use the method
+		in ABC itself. Acts the same as ``@abc_method_work_in_abc``.
+	"""
+	def child_assert(cls_obj: type, error_format_f: _t_abc_error_format_f):
+		assert cls_obj is abc_cls_f(), error_format_f(cls_obj)
+
+	def parent_assert(cls_obj: type, error_format_f: _t_abc_error_format_f):
+		assert False, error_format_f(cls_obj)
+
+	return __abc_method_error(
+		child_assert, parent_assert, abc_cls_f, cls=cls, work_on_abc=work_on_abc
+	)
+
+
+def abc_method_error(abc_cls_f: _t_abc_cls_f, cls=False, work_on_abc=False, ):
+	"""
+	Abstract-method decorator raising ``NotImplementedError`` error if the method
+	is called from inherited (concrete) class.
+
+	Used with ``abc.abstractmethod``.
+
+	Usage::
+
+		def get_C():
+			return C
+
+		class C(metaclass=ABCMeta):
+			@abc_method_error(get_C)
+			@abstractmethod
+			def my_method(self, ...):
+				...
+
+			@classmethod
+			@abc_method_error(get_C, cls=True)
+			@abstractmethod
+			def my_class_method(self, ...):
+				...
+
+	:param abc_cls_f: Function returning the actual ABC class the method is defined in.
+	:param cls: Whether @classmethod is also applied (it should be done after/above).
+	:param work_on_abc:
+		if ``True``, Lets you throw an error in inherited class but still use the method
+		in ABC itself. Acts the same as ``@abc_method_work_in_abc``.
+	"""
+	def child_error(cls_obj: type, error_format_f: _t_abc_error_format_f):
+		if cls_obj is not abc_cls_f():
+			raise TypeError(error_format_f(cls_obj))
+
+	def parent_error(cls_obj: type, error_format_f: _t_abc_error_format_f):
+		raise TypeError(error_format_f(cls_obj))
+
+	return __abc_method_error(
+		child_error, parent_error, abc_cls_f, cls=cls, work_on_abc=work_on_abc
+	)
+
+
+def abc_method_no_error(f: _c):
+	"""
+	Decorator which lets you make abstractmethod callable from ABC itself.
+
+	Basically, it neglects what ``@abstractmethod`` decorator does *(but still
+	lets IDE to see it as abstract method)*, effectively making this 'abstractness'
+	more of a suggestion rather than requirement.
+	"""
+	# noinspection SpellCheckingInspection
+	f.__isabstractmethod__ = False
+	return f
+
+
 def print_func_args(f: _c):
 	"""Service decorator used to debug the arguments passed to a function."""
 	f_name = _qual_name_for_decorator(f)
