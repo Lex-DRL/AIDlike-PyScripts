@@ -4,8 +4,6 @@
 
 __author__ = 'Lex Darlog (DRL)'
 
-import typing as _t
-
 import re as _re
 from html import unescape as _html_unescape
 
@@ -24,6 +22,8 @@ from urllib.parse import (
 )
 
 from common import StaticDataClass as _StaticDataClass
+
+from drl_typing import *
 
 
 # noinspection PyUnusedLocal
@@ -190,7 +190,7 @@ class URLs(_StaticDataClass):
 		errors='strict',
 		unquote_mode=2,
 		quote_mode=2,
-		query_sort_key_f: _t.Optional[_t.Callable[[_t.Tuple[int, str, _t.Any]], _t.Any]] = None,
+		query_sort_key_f: _o[_c[[_tpl[int, str, _tA]], _tA]] = None,
 		**kwargs
 	):
 		"""

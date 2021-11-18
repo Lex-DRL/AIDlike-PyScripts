@@ -4,8 +4,6 @@
 
 __author__ = 'Lex Darlog (DRL)'
 
-import typing as _t
-
 import errno
 from enum import Enum
 from itertools import chain
@@ -34,6 +32,8 @@ from common import (
 from .__url import URLs
 from .__paths import Paths
 from .async_request import get_pages as _get_pages_async
+
+from drl_typing import *
 
 
 parser = 'lxml'
@@ -85,13 +85,13 @@ _tag_defaults = OrderedDict([
 	('subtags', _defaults_ref),
 	('metatags', _defaults_ref),
 ])
-_t_tag_ref = _t.Set[str]
+_t_tag_ref = _set_str
 _unknown_tag_usage: int = _tag_defaults['usages'][0]  # default <usage> value
 _type = type
 NoneType = type(None)
 
 
-class Tag(_t.NamedTuple, _CustomHash):
+class Tag(_NT, _CustomHash):
 	"""
 	An AO3's tag is uniquely identified with it's name and (possibly) url token.
 	idk if there can be multiple tags with identical names but their URLs are
@@ -140,14 +140,14 @@ class Tag(_t.NamedTuple, _CustomHash):
 		The last time this tag entry populated it's properties from the actual
 		tag page. It's used to cache tags locally but update them from time to time.
 	"""
-	type: _t.Union[None, TagType, str]
+	type: _u[None, TagType, str]
 	name: str
 
 	url_token: str = _tag_defaults['url_token'][0]
 
-	canonical: _t.Optional[bool] = _tag_defaults['canonical'][0]
+	canonical: _o_b = _tag_defaults['canonical'][0]
 	usages: int = _unknown_tag_usage
-	date: _t.Optional[dt] = _tag_defaults['date'][0]
+	date: _o[dt] = _tag_defaults['date'][0]
 
 	synonyms: _t_tag_ref = _tag_defaults['synonyms'][0]
 	parents: _t_tag_ref = _tag_defaults['parents'][0]
@@ -160,7 +160,7 @@ class Tag(_t.NamedTuple, _CustomHash):
 		return self.name, self.url_token
 
 	@classmethod
-	def _clean_date(cls, calling_method: str, date: _t.Optional[dt], name: str = None):
+	def _clean_date(cls, calling_method: str, date: _o[dt], name: str = None):
 		"""
 		Part of `_clean_args()` that checks only date argument
 		(it might be needed to check it separately).
@@ -169,7 +169,7 @@ class Tag(_t.NamedTuple, _CustomHash):
 		assert isinstance(date, (NoneType, dt)), (
 			f'Wrong date {tag_part}.{calling_method}(): {repr(date)}'
 		)
-		date: _t.Optional[dt] = date
+		date: _o[dt] = date
 		return date
 
 	# noinspection PyShadowingBuiltins
@@ -186,7 +186,7 @@ class Tag(_t.NamedTuple, _CustomHash):
 		If '/' is provided as **url_token**, it's value is taken from name.
 		"""
 
-		def _args_gen(args_seq: _t.Iterable, kwargs_dict: dict):
+		def _args_gen(args_seq: _i, kwargs_dict: dict):
 			"""Combine args and kwargs to just a sequence of positional args."""
 			for arg_nm, (default_val, default_f) in _tag_defaults.items():
 				if args_seq:
@@ -294,9 +294,9 @@ class Tag(_t.NamedTuple, _CustomHash):
 		if url_token == name:
 			url_token = name
 
-		type: _t.Union[None, TagType, str] = type
-		canonical: _t.Optional[bool] = canonical
-		date: _t.Optional[dt] = cls._clean_date(calling_method, date, name)
+		type: _u[None, TagType, str] = type
+		canonical: _o_b = canonical
+		date: _o[dt] = cls._clean_date(calling_method, date, name)
 		if date is None and usages > -1:
 			date = dt.now()
 
@@ -328,13 +328,13 @@ class Tag(_t.NamedTuple, _CustomHash):
 		cls,
 		# let's just repeat all the args here explicitly, for IDE hints:
 
-		type: _t.Union[None, TagType, str],
+		type: _u[None, TagType, str],
 		name: str,
-		url_token: _t.Optional[str] = None,
+		url_token: _o_str = None,
 
-		canonical: _t.Optional[bool] = False,
-		usages: _t.Optional[int] = _unknown_tag_usage,
-		date: _t.Optional[dt] = None,
+		canonical: _o_b = False,
+		usages: _o[int] = _unknown_tag_usage,
+		date: _o[dt] = None,
 
 		synonyms: _t_tag_ref = None,
 		parents: _t_tag_ref = None,
@@ -402,22 +402,22 @@ class Tag(_t.NamedTuple, _CustomHash):
 		)
 
 	@classmethod
-	def date_str(cls, date: _t.Optional[dt]):
+	def date_str(cls, date: _o[dt]):
 		clean_date = cls._clean_date('date_str', date)
 		if clean_date is None:
 			return _empty_str
 		return clean_date.strftime(_TagDumpConfig.date_format)
 
 	@classmethod
-	def date_from_str(cls, date_str: _t.Optional[str], in_timezone=None):
+	def date_from_str(cls, date_str: _o_str, in_timezone=None):
 		if not date_str:
 			return None
 		return dt.strptime(date_str, _TagDumpConfig.date_format).astimezone(in_timezone)
 
 	@classmethod
 	def _reorder_fields_to_dump(
-		cls, items: _t.Iterable[_t.Tuple[str, str]]
-	) -> _t.Tuple[_t.Tuple[str, str], ...]:
+		cls, items: _i[_tpl[str, str]]
+	) -> _tpl[_tpl[str, str], ...]:
 		"""Reorder tag elements from tuple to dumped order."""
 		# noinspection PyShadowingBuiltins
 		type, name, url_token, canonical, usages, date, *refs = items
@@ -431,7 +431,7 @@ class Tag(_t.NamedTuple, _CustomHash):
 		return (name, url_token, *optional_fields)
 
 	# noinspection PyShadowingBuiltins
-	def dumps(self) -> _t.Tuple[str, ...]:
+	def dumps(self) -> _tpl_str:
 		"""
 		Dump tag object to a string representation for saving to a file.
 
@@ -507,7 +507,7 @@ class Tag(_t.NamedTuple, _CustomHash):
 			assert isinstance(type, TagType)
 			return f'{type.value}_{type.name}'
 
-		def date_key(date: _t.Optional[dt]):
+		def date_key(date: _o[dt]):
 			if date is None:
 				date = _TagDumpConfig.zero_day
 			return _TagDumpConfig.zero_day - date
@@ -559,7 +559,7 @@ class _TagDumpConfig(_StaticDataClass):
 	)
 
 
-class TagSet(_t.Set[Tag]):
+class TagSet(_set[Tag]):
 
 	name: str = _empty_str
 
@@ -613,7 +613,7 @@ class TagSearch:
 		'page': 11,
 	}
 
-	def __init__(self, url: _t.Union[str, URLs.SplitResult], view_adult=True):
+	def __init__(self, url: _u[_str, URLs.SplitResult], view_adult=True):
 		super(TagSearch, self).__init__()
 
 		url_str: str = (
@@ -647,7 +647,7 @@ class TagSearch:
 		return (Tag.build_from_li(tag_li) for tag_li in tag_lines)
 
 	@classmethod
-	def __query_sort_key(cls, i_key_val: _t.Tuple[int, str, _t.Any]):
+	def __query_sort_key(cls, i_key_val: _tpl[int, _str, _tA]):
 		i, key, val = i_key_val
 		return cls.__query_sort_override_weights.get(key, 0), i
 
@@ -665,7 +665,7 @@ class TagSearch:
 
 	@classmethod
 	def __detect_pages_number(cls, pager_ol: _bsTag):
-		lis: _t.List[_bsTag] = pager_ol.find_all('li')
+		lis: _l[_bsTag] = pager_ol.find_all('li')
 		last_li = None
 		while lis:
 			last_li = lis.pop()

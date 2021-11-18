@@ -5,15 +5,15 @@ This script joins stories from different files, removing duplicates.
 
 __author__ = 'Lex Darlog (DRL)'
 
-import typing as _t
 import re as _re
 from pathlib import Path
 from itertools import chain
 
+from drl_typing import *
 
-TextLines = _t.List[str]
-TextLinesIter = _t.Iterable[str]
-StoryVariants = _t.List[TextLines]
+TextLines = _l_str
+TextLinesIter = _i_str
+StoryVariants = _l[TextLines]
 
 
 def reversed_int_indices(size):
@@ -21,7 +21,7 @@ def reversed_int_indices(size):
 	return range(size - 1, -1, -1)
 
 
-class StoriesDatabase(_t.Dict[str, StoryVariants]):
+class StoriesDatabase(_d[str, StoryVariants]):
 	"""
 	A dict-like dataclass containing multiple stories.
 	The structure is following:
@@ -50,7 +50,7 @@ class StoriesDatabase(_t.Dict[str, StoryVariants]):
 
 	# replace HTML char-codes to actual chars:
 	html_chars_replace = True
-	html_chars_map: _t.List[_t.Tuple[str, str]] = [
+	html_chars_map: _l[_tpl[str, str]] = [
 		# ASCII:
 		('&amp;', '&'),
 		('&nbsp;', ' '),
@@ -163,12 +163,12 @@ class StoriesDatabase(_t.Dict[str, StoryVariants]):
 					break
 				story.pop()
 
-		story_name_matcher: _t.Callable[[str], _t.Match] = self.story_name_pattern.match
+		story_name_matcher: _c[[str], _reM] = self.story_name_pattern.match
 
 		# noinspection PyTypeChecker
 		cur_story_variant: TextLines = None
 		# noinspection PyTypeChecker
-		cur_story_line_append: _t.Callable[[str], _t.Any] = None
+		cur_story_line_append: _c[[str], _tA] = None
 		not_in_story_yet = True
 		no_lines_in_story_yet = True
 		n_vars_total = 0
@@ -226,7 +226,7 @@ class StoriesDatabase(_t.Dict[str, StoryVariants]):
 			file_lines = f.readlines()
 		return self.parse_text(file_lines)
 
-	def parse_files(self, file_paths: _t.Iterable[Path], ext=None):
+	def parse_files(self, file_paths: _i[Path], ext=None):
 		"""
 		Parse multiple files in sequence.
 		Paths pointing to directories are filtered out.
@@ -235,7 +235,7 @@ class StoriesDatabase(_t.Dict[str, StoryVariants]):
 			ext = [ext, ]
 		if not ext:
 			ext = list()
-		ext_set: _t.Set[str] = {
+		ext_set: _set_str = {
 			(e.lower() if e.startswith('.') else '.' + e.lower())
 			for e in ext
 			if isinstance(e, str)
@@ -270,7 +270,7 @@ class StoriesDatabase(_t.Dict[str, StoryVariants]):
 			print('Reading all the text files from dir: {}'.format(dir_path))
 		return self.parse_files(dir_path.iterdir())
 
-	def is_code_story(self, story: _t.Iterable[str]):
+	def is_code_story(self, story: _i_str):
 		"""Whether the given story has some garbage code from scrape."""
 		matcher = self.code_pattern.match
 		return any(matcher(line) for line in story)
@@ -298,7 +298,7 @@ class StoriesDatabase(_t.Dict[str, StoryVariants]):
 			if n < 1:
 				return None
 
-			pattern: _t.Union[_t.Pattern, str] = args[0]
+			pattern: _u[_reP, str] = args[0]
 			repl: str = '' if n < 2 else args[1]
 			do_loop: bool = False if n < 3 else args[2]
 
@@ -349,9 +349,9 @@ class StoriesDatabase(_t.Dict[str, StoryVariants]):
 			"""
 			Conditionally add html-chars replacement after the main cleanup func.
 			"""
-			def decorator(f: _t.Callable[[str], str]):
+			def decorator(f: _c[[str], str]):
 				# cache as tuple of tuples - for some perf optimization
-				html_chars_map: _t.Tuple[_t.Tuple[str, str], ...] = tuple(
+				html_chars_map: _tpl[_tpl[str, str], ...] = tuple(
 					(src, repl)
 					for src, repl, *buffer in self.html_chars_map
 				)
@@ -376,7 +376,7 @@ class StoriesDatabase(_t.Dict[str, StoryVariants]):
 				[cleanup_single_line(ln) for ln in variant_text]
 				for variant_text in story_variants
 			)
-			unique_variants_dict: _t.Dict[_t.Tuple[str, ...], int] = {
+			unique_variants_dict: _d[_tpl_str, int] = {
 				story_identifier_key(story_variants_clean[i]): i
 				for i in reversed_int_indices(len(story_variants_clean))
 				# we need to iterate variants ^ in reversed order to keep the first
@@ -397,7 +397,7 @@ class StoriesDatabase(_t.Dict[str, StoryVariants]):
 			if len(story_variants_clean) == len(unique_variants_dict):
 				continue
 
-			id_to_unique_text_tuple_map: _t.Dict[int, _t.Tuple[str, ...]] = {
+			id_to_unique_text_tuple_map: _d[int, _tpl_str] = {
 				i: id_tuple for id_tuple, i in unique_variants_dict.items()
 			}
 			story_variants[:] = (
