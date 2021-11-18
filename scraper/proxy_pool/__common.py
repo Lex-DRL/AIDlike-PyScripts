@@ -25,6 +25,8 @@ from common import (
 	abc_method_assert as _abc_assert,
 )
 import drl_enum as _enum
+from drl_pydantic import ValidatorsIfNot as _vNot
+
 
 from drl_typing import *
 
@@ -46,15 +48,6 @@ class Anonymity(_enum.Enum):
 	Elite = 2
 
 
-@_enum.map_all_cases(unknown=True)
-class ProxySource(_enum.Enum):
-	Unknown = None
-	GeoNode = 0
-	FreeProxyList = 1
-
-	Custom = 99
-
-
 @_dataclass
 class UpTime:
 	n_used: int = 0
@@ -69,18 +62,68 @@ class UpTime:
 		self.n_used += success
 
 
+_abc_assert_abstract_data = _abc_assert(lambda: _AbstractProxyData)
+
+
+class ProxyCompareError(TypeError):
+	def __init__(self, a, operation: str, b):
+		super(ProxyCompareError, self).__init__(
+			f"Wrong comparison: {a!r} {operation}, {b!r}"
+		)
+		self.a = a
+		self.b = b
+		self.operation = operation
+
+
+class _AbstractProxyData(_abc.ABC, _BaseModel):
+	"""
+	Root base class for all the *ProxyData classes. Basically, should contain
+	everything known about a specific proxy except for it's url (acting as id)."""
+
+	@_abc_assert_abstract_data
+	@_abc.abstractmethod
+	def __eq__(self, other) -> bool:
+		"""Whether two proxies are equivalent (and probably need merging)."""
+		...
+
+	def __ne__(self, other) -> bool:
+		"""Whether one of the proxies is clearly better than the other one."""
+		return not self.__eq__(other)
+
+	@_abc_assert_abstract_data
+	@_abc.abstractmethod
+	def __lt__(self, other) -> bool:
+		"""Whether this proxy is worse than some other one."""
+		...
+
+	def __le__(self, other):
+		raise ProxyCompareError(self, '<=', other)
+
+	@_abc_assert_abstract_data
+	@_abc.abstractmethod
+	def __gt__(self, other) -> bool:
+		"""Whether this proxy is better than some other one."""
+		...
+
+	def __ge__(self, other) -> bool:
+		raise ProxyCompareError(self, '>=', other)
+
+
 _abc_assert_specific_data = _abc_assert(lambda: _SpecificPoolProxyData)
 
 
-class _SpecificPoolProxyData(_abc.ABC, _BaseModel):
-	"""Base class for each pool's underlying data."""
+class _SpecificPoolProxyData(_AbstractProxyData):
+	"""Base class for each concrete pool's underlying data."""
 
 	# noinspection PyUnreachableCode
 	@_abc_assert_specific_data
 	@_abc.abstractmethod
 	def as_standard(self):
 		"""Represent specific pool data as standard key-value pair for proxy."""
-		raise NotImplementedError()
+		raise TypeError(
+			f"{self.__class__.__name__}.as_standard() must be overridden for "
+			f"and called from concrete child classes."
+		)
 		# noinspection PyTypeChecker
 		k: ProxyID = None
 		# noinspection PyTypeChecker
@@ -88,25 +131,52 @@ class _SpecificPoolProxyData(_abc.ABC, _BaseModel):
 		return k, v
 
 
-@_dataclass
-class ProxyData:
+class ProxyData(_AbstractProxyData):
 	"""
-	Optional data (stats) for a given proxy. Basically, everything except for
-	proxy-url.
-	Additionally, may contain linked `raw_data` with proxy info
-	taken from a specific source (for a specific proxy pool).
+	Proxy data in standard form.
+
+	Additionally, may contain ``_SpecificPoolProxyData`` *(proxy info
+	taken from a specific pool)* linked as ``raw_data``.
 	"""
-	proto: _u[str, _l[str], _tpl_str] = ''
-	country: str = ''
-	city: str = ''
+
+	proto: _u[None, _l_str, _tpl_str] = None
+	country: str = None
+	city: str = None
 	last_worked: _o[_dt] = None
 	uptime_total: UpTime = UpTime()
 	uptime_when_worked: UpTime = UpTime()
 	reported_speed: int = 0
 	anon: Anonymity = Anonymity.Unknown
-	source: ProxySource = ProxySource.Unknown
 
 	raw_data: _o[_SpecificPoolProxyData] = None
+
+	_v_proto = _vNot('proto', pre=True).none
+	_v_country = _vNot('country', pre=True).none
+	_v_city = _vNot('city', pre=True).none
+	_v_last_worked = _vNot('last_worked', pre=True).none
+
+	_v_uptime_total = _vNot('uptime_total', pre=True).value_factory(UpTime)
+	_v_uptime_when_worked = _vNot('uptime_when_worked', pre=True).value_factory(UpTime)
+	_v_reported_speed = _vNot('reported_speed', pre=True).int
+
+	@_v('anon', pre=True)
+	def _v_anon(cls, v):
+		return Anonymity[v]
+
+	_v_raw_data = _vNot('raw_data', pre=True).none
+
+
+	def __eq__(self, other: _AbstractProxyData) -> bool:
+		# TODO
+		raise NotImplementedError()
+
+	def __lt__(self, other: _AbstractProxyData) -> bool:
+		# TODO
+		raise NotImplementedError()
+
+	def __gt__(self, other: _AbstractProxyData) -> bool:
+		# TODO
+		raise NotImplementedError()
 
 
 _pp_dict = _d[ProxyID, ProxyData]

@@ -20,6 +20,7 @@ from drl_pydantic import (
 from .__common import *
 # and protected members - manually:
 from .__common import (
+	_AbstractProxyData,
 	_SpecificPoolProxyData,
 	_pp_dict,
 )
@@ -28,7 +29,7 @@ from drl_typing import *
 
 
 class GeoNodeProxyData(_SpecificPoolProxyData):
-	"""Single proxy data scrubbed from geonode.com"""
+	"""Single proxy data scrubbed from ``geonode.com``"""
 
 	ip: str = ''
 	port: int = 0
@@ -89,6 +90,18 @@ class GeoNodeProxyData(_SpecificPoolProxyData):
 	_v_uptime_success = _vNot('uptime_success', pre=True).none
 	_v_uptime_tries = _vNot('uptime_tries', pre=True).none
 	_v_working = _vNot('working', pre=True).none
+
+	def __eq__(self, other: _AbstractProxyData) -> bool:
+		# TODO
+		raise NotImplementedError()
+
+	def __lt__(self, other: _AbstractProxyData) -> bool:
+		# TODO
+		raise NotImplementedError()
+
+	def __gt__(self, other: _AbstractProxyData) -> bool:
+		# TODO
+		raise NotImplementedError()
 
 	def as_standard(self) -> _tpl[ProxyID, ProxyData]:
 		# TODO
