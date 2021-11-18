@@ -73,6 +73,7 @@ _abc_assert_specific_data = _abc_assert(lambda: _SpecificPoolProxyData)
 
 
 class _SpecificPoolProxyData(_abc.ABC, _BaseModel):
+	"""Base class for each pool's underlying data."""
 
 	# noinspection PyUnreachableCode
 	@_abc_assert_specific_data
@@ -136,6 +137,7 @@ class ProxyPool(_TrackingABC, _StaticDataClass):
 
 	@classmethod
 	def __all_classes(cls, self=True):
+		"""All ``ProxyPool`` classes."""
 		classes: _i[_Tp[ProxyPool]] = cls._tracked_children
 		if self:
 			classes = _chain([cls], classes)
@@ -162,12 +164,17 @@ class ProxyPool(_TrackingABC, _StaticDataClass):
 	@_abc_assert_pp
 	@_abc.abstractmethod
 	def _raw_pool(cls) -> _d[ProxyID, _tA]:
+		"""
+		Underlying pool dict for each specific pool (it's items are
+		``_SpecificPoolItemData`` subclasses, specific for each pool.)
+		"""
 		return cls.__combined_pool
 
 	@classmethod
 	@_abc_assert_pp
 	@_abc.abstractmethod
 	def _child_entry_class(cls) -> _Tp[_SpecificPoolProxyData]:
+		"""Return the type of underlying item data for each pool."""
 		# noinspection PyTypeChecker
 		return None
 
@@ -175,6 +182,7 @@ class ProxyPool(_TrackingABC, _StaticDataClass):
 	@_abc_assert_pp
 	@_abc.abstractmethod
 	def _pop_item(cls, k: ProxyID):
+		"""Remove an item with a given key from the pool."""
 		for child in cls.__all_classes(False):
 			child._pop_item(k)
 		cls.__combined_pool.pop(k)
@@ -202,6 +210,7 @@ class ProxyPool(_TrackingABC, _StaticDataClass):
 	@_abc_assert_pp
 	@_abc.abstractmethod
 	def _cache(cls):
+		"""Save the ``ProxyPool`` contents to a cache file (JSON)."""
 		# TODO
 		...
 
