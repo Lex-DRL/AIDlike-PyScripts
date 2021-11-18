@@ -20,15 +20,16 @@ from drl_pydantic import (
 from .__common import *
 # and protected members - manually:
 from .__common import (
-	_SpecificPoolItemData,
+	_SpecificPoolProxyData,
 	_pp_dict,
 )
 
 from drl_typing import *
 
 
-class GeoNodeItem(_SpecificPoolItemData):
+class GeoNodeProxyData(_SpecificPoolProxyData):
 	"""Single proxy data scrubbed from geonode.com"""
+
 	ip: str = ''
 	port: int = 0
 	host: str = _Field('', alias='hostName')
@@ -89,19 +90,24 @@ class GeoNodeItem(_SpecificPoolItemData):
 	_v_uptime_tries = _vNot('uptime_tries', pre=True).none
 	_v_working = _vNot('working', pre=True).none
 
+	def as_standard(self) -> _tpl[ProxyID, ProxyData]:
+		# TODO
+		raise NotImplementedError()
+
 
 class GeoNodeProxyPool(ProxyPool):
 	"""Pool of proxies taken from geonode.com"""
+
 	json_file_init = module_dir / 'geonode-init.json'
 	json_file_cache = module_dir / 'geonode-cache.json'
 	url = 'https://proxylist.geonode.com/api/proxy-list?limit=500&page=1&sort_by=lastChecked&sort_type=desc&protocols=https'
 
-	__raw_pool: _d[ProxyID, GeoNodeItem] = dict()
+	__raw_pool: _d[ProxyID, GeoNodeProxyData] = dict()
 
 	_pool_class_priority: tuple = (10,)  # bigger = more important
 
 	@classmethod
-	def __contains__(cls, key):
+	def __contains__(cls, key: ProxyID):
 		return key in cls.__raw_pool
 
 	@classmethod
@@ -114,18 +120,31 @@ class GeoNodeProxyPool(ProxyPool):
 
 	@classmethod
 	def _child_entry_class(cls):
-		return GeoNodeItem
+		return GeoNodeProxyData
 
 	@classmethod
-	def __load_items_to_pool(cls, *items: GeoNodeItem):
+	def _pop_item(cls, k: ProxyID):
+		# TODO
+		raise NotImplementedError()
+
+	@classmethod
+	def _sync_item(cls, k: ProxyID, v: ProxyData):
+		# TODO
+		raise NotImplementedError()
+
+	@classmethod
+	def __load_items_to_pool(cls, *items: GeoNodeProxyData):
+		# TODO
 		raise NotImplementedError()
 
 	@classmethod
 	def __load_json_files(cls):
+		# TODO
 		raise NotImplementedError()
 
 	@classmethod
 	def __load_from_web(cls):
+		# TODO
 		raise NotImplementedError()
 
 	@classmethod
@@ -135,11 +154,12 @@ class GeoNodeProxyPool(ProxyPool):
 
 	@classmethod
 	def _cache(cls):
+		# TODO
 		raise NotImplementedError()
 
 	@classmethod
 	def _as_standard_pool(cls) -> _pp_dict:
-		def process_single_item(key: ProxyID, raw_item: GeoNodeItem):
+		def process_single_item(key: ProxyID, raw_item: GeoNodeProxyData):
 			new_key, std_item = raw_item.as_standard()
 			if new_key != key:
 				raise RuntimeError(f'Proxy discrepancy in {cls}: {key} -> {new_key}')
@@ -149,4 +169,3 @@ class GeoNodeProxyPool(ProxyPool):
 			k: v for k, v in
 			(process_single_item(r_k, r_v) for r_k, r_v in cls.__raw_pool.items())
 		}
-

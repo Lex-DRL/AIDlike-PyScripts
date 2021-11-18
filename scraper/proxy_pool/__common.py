@@ -22,6 +22,7 @@ from pydantic.dataclasses import dataclass as _pyd_dataclass
 from common import (
 	StaticDataClass as _StaticDataClass,
 	TrackingABC as _TrackingABC,
+	abc_method_assert as _abc_assert,
 )
 import drl_enum as _enum
 
@@ -68,9 +69,13 @@ class UpTime:
 		self.n_used += success
 
 
-class _SpecificPoolItemData(_abc.ABC, _BaseModel):
+_abc_assert_specific_data = _abc_assert(lambda: _SpecificPoolProxyData)
+
+
+class _SpecificPoolProxyData(_abc.ABC, _BaseModel):
 
 	# noinspection PyUnreachableCode
+	@_abc_assert_specific_data
 	@_abc.abstractmethod
 	def as_standard(self):
 		"""Represent specific pool data as standard key-value pair for proxy."""
@@ -100,10 +105,12 @@ class ProxyData:
 	anon: Anonymity = Anonymity.Unknown
 	source: ProxySource = ProxySource.Unknown
 
-	raw_data: _o[_SpecificPoolItemData] = None
+	raw_data: _o[_SpecificPoolProxyData] = None
 
 
 _pp_dict = _d[ProxyID, ProxyData]
+
+_abc_assert_pp = _abc_assert(lambda: ProxyPool, cls=True, work_on_abc=True)
 
 
 class ProxyPool(_TrackingABC, _StaticDataClass):
@@ -116,19 +123,16 @@ class ProxyPool(_TrackingABC, _StaticDataClass):
 	_pool_class_priority: tuple = (0, )  # bigger = more important
 
 	@classmethod
+	@_abc_assert_pp
 	@_abc.abstractmethod
-	def __contains__(cls, key):
+	def __contains__(cls, key: ProxyID):
 		return key in cls.__combined_pool
 
 	@classmethod
+	@_abc_assert_pp
 	@_abc.abstractmethod
-	def __getitem__(cls, key):
+	def __getitem__(cls, key: ProxyID):
 		return cls.__combined_pool[key]
-
-	@classmethod
-	def __abc_error(cls):
-		if cls is not ProxyPool:
-			raise NotImplementedError()
 
 	@classmethod
 	def __all_classes(cls, self=True):
@@ -155,54 +159,57 @@ class ProxyPool(_TrackingABC, _StaticDataClass):
 		return tuple(all_pools)
 
 	@classmethod
+	@_abc_assert_pp
 	@_abc.abstractmethod
 	def _raw_pool(cls) -> _d[ProxyID, _tA]:
-		cls.__abc_error()
 		return cls.__combined_pool
 
 	@classmethod
+	@_abc_assert_pp
 	@_abc.abstractmethod
-	def _child_entry_class(cls) -> _Tp[_SpecificPoolItemData]:
+	def _child_entry_class(cls) -> _Tp[_SpecificPoolProxyData]:
 		# noinspection PyTypeChecker
 		return None
 
 	@classmethod
+	@_abc_assert_pp
 	@_abc.abstractmethod
 	def _pop_item(cls, k: ProxyID):
-		cls.__abc_error()
 		for child in cls.__all_classes(False):
 			child._pop_item(k)
 		cls.__combined_pool.pop(k)
 
 	@classmethod
+	@_abc_assert_pp
 	@_abc.abstractmethod
 	def _sync_item(cls, k: ProxyID, v: ProxyData):
 		"""
 		Ensure there's no proxy duplicates between pools by merging their data
 		and keeping only one instance in the pool with the most recent proxy-data.
 		"""
-		cls.__abc_error()
 		# TODO
+		...
 
 	@classmethod
+	@_abc_assert_pp
 	@_abc.abstractmethod
 	def _load(cls):
 		"""Load data from all the sources a given ``ProxyPool`` supports."""
-		cls.__abc_error()
 		# TODO
+		...
 
 	@classmethod
+	@_abc_assert_pp
 	@_abc.abstractmethod
 	def _cache(cls):
-		cls.__abc_error()
 		# TODO
+		...
 
 	@classmethod
+	@_abc_assert_pp
 	@_abc.abstractmethod
 	def _as_standard_pool(cls) -> _pp_dict:
 		"""Convert internal raw pool to the standard format."""
-		cls.__abc_error()
-
 		merged_pool: _d[ProxyID, ProxyData] = dict()
 		for pool_cls, std_pool in cls.__all_standard_pools():
 			raw_pool = pool_cls._raw_pool()
