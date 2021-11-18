@@ -113,6 +113,21 @@ class TrackingABC(_abc.ABC, metaclass=TrackingABCMeta):
 	pass
 
 
+def remove_duplicates(iterable: _i[_T]) -> _gen[_T, _tA, None]:
+	"""
+	Creates a generator object for an iterable which removes any duplicate items
+	(but keeps their order if source iterable is ordered).
+	"""
+	iterable = iter(iterable)  # throw an error even before generator is used
+	seen: _set[_T] = set()
+	seen_add = seen.add
+	res: _gen[_T, ..., None] = (
+		x for x in iterable
+		if not (x in seen or seen_add(x))
+	)
+	return res
+
+
 _byte_kilo_sizes = ('', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi')
 _byte_yobi = 'Yi'
 _byte_kilo_step = 1024.0
