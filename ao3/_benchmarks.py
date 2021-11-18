@@ -17,9 +17,12 @@ from datetime import datetime as dt
 
 from pympler import asizeof
 
-from common import human_bytes, format_thousands
+from common import (
+	StaticDataClass as _StaticDataClass,
+	human_bytes, format_thousands,
+)
 from ao3.__url import URLs
-from ao3.__paths import Paths, _StaticDataClass
+from ao3.__paths import Paths
 
 
 class BenchTagSearch(_StaticDataClass):

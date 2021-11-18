@@ -27,8 +27,9 @@ from bs4 import (
 	Tag as _bsTag
 )
 
+from common import StaticDataClass as _StaticDataClass
 from .__url import URLs
-from .__paths import _StaticDataClass, Paths
+from .__paths import Paths
 from .async_request import get_pages as _get_pages_async
 
 
