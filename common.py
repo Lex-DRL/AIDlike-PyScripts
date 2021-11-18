@@ -7,6 +7,7 @@ __author__ = 'Lex Darlog (DRL)'
 
 import abc as _abc
 from dataclasses import dataclass as _dataclass
+from functools import wraps
 from pathlib import Path as _Path
 
 from drl_typing import *
@@ -223,3 +224,32 @@ def decorators_combine(*decs, reverse=False):
 			f = dec(f)
 		return f
 	return decorator
+
+
+def _obj_name_for_decorator(obj: _tA) -> _str:
+	# noinspection PyBroadException
+	try:
+		return obj.__name__
+	except:
+		return repr(obj)
+
+
+def _qual_name_for_decorator(obj: _tA) -> _str:
+	# noinspection PyBroadException
+	try:
+		return obj.__qualname__
+	except:
+		return _obj_name_for_decorator(obj)
+
+
+def print_func_args(f: _c):
+	"""Service decorator used to debug the arguments passed to a function."""
+	f_name = _qual_name_for_decorator(f)
+
+	@wraps(f)
+	def wrapper(*args, **kwargs):
+		str_args = [repr(a) for a in args]
+		str_args.extend(f'{k}={v!r}' for k, v in kwargs.items())
+		print(f'{f_name}({", ".join(str_args)})')
+		return f(*args, **kwargs)
+	return wrapper
