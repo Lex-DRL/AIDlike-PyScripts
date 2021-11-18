@@ -4,18 +4,6 @@
 
 __author__ = 'Lex Darlog (DRL)'
 
-import typing as _t
-from typing import (
-	Optional as _o,
-	Union as _u,
-	Callable as _c,
-	List as _l,
-	Tuple as _tpl,
-	Type as _tt,
-	Set as _s,
-	Dict as _d,
-)
-
 import abc as _abc
 from dataclasses import dataclass as _dataclass
 from datetime import datetime as _dt
@@ -42,14 +30,12 @@ from pyd_utils import (
 	v_func as _v_func,
 )
 
-_o_str = _o[str]
-_o_dig = _u[None, int, float]
-_tpl_str = _tpl[str, ...]
+from drl_typing import *
 
 module_dir = _Path(__file__).parent
 
 
-class ProxyID(_t.NamedTuple):
+class ProxyID(_NT):
 	"""Essential (identifier) data for proxy. Used as key in `ProxyPool`."""
 	domain: str
 	port: int
@@ -111,7 +97,7 @@ class ProxyData:
 	proto: _u[str, _l[str], _tpl_str] = ''
 	country: str = ''
 	city: str = ''
-	last_worked: _t.Optional[_dt] = None
+	last_worked: _o[_dt] = None
 	uptime_total: UpTime = UpTime()
 	uptime_when_worked: UpTime = UpTime()
 	reported_speed: int = 0
@@ -150,7 +136,7 @@ class ProxyPool(_TrackingABC, _StaticDataClass):
 
 	@classmethod
 	def __all_classes(cls, self=True):
-		classes: _t.Iterable[_tt[ProxyPool]] = cls._tracked_children
+		classes: _i[_Tp[ProxyPool]] = cls._tracked_children
 		if self:
 			classes = _chain([cls], classes)
 		return tuple(classes)
@@ -162,7 +148,7 @@ class ProxyPool(_TrackingABC, _StaticDataClass):
 		the main ``ProxyPool``, too).
 		Pools are sorted according to ``_pool_class_priority``.
 		"""
-		_t_res_item = _tpl[_tt[ProxyPool], _pp_dict]
+		_t_res_item = _tpl[_Tp[ProxyPool], _pp_dict]
 		all_pools: _l[_t_res_item] = list(_chain(
 			[(cls, cls.__combined_pool)],
 			((c, c._as_standard_pool()) for c in cls.__all_classes(False))
@@ -174,13 +160,13 @@ class ProxyPool(_TrackingABC, _StaticDataClass):
 
 	@classmethod
 	@_abc.abstractmethod
-	def _raw_pool(cls) -> _d[ProxyID, _t.Any]:
+	def _raw_pool(cls) -> _d[ProxyID, _tA]:
 		cls.__abc_error()
 		return cls.__combined_pool
 
 	@classmethod
 	@_abc.abstractmethod
-	def _child_entry_class(cls) -> _tt[_SpecificPoolItemData]:
+	def _child_entry_class(cls) -> _Tp[_SpecificPoolItemData]:
 		# noinspection PyTypeChecker
 		return None
 
@@ -259,10 +245,10 @@ class _GeoNodeItem(_SpecificPoolItemData):
 	latency: _o[int] = None
 	response: _o[int] = None
 
-	uptime: _o_dig = _Field(None, alias='upTime')
+	uptime: _o_if = _Field(None, alias='upTime')
 	uptime_success: _o[int] = _Field(None, alias='upTimeSuccessCount')
 	uptime_tries: _o[int] = _Field(None, alias='upTimeTryCount')
-	working: _o_dig = _Field(None, alias='workingPercent')
+	working: _o_if = _Field(None, alias='workingPercent')
 
 	_v_port = _vNot('port', pre=True).int
 

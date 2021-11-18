@@ -4,8 +4,6 @@
 
 __author__ = 'Lex Darlog (DRL)'
 
-import typing as _t
-
 import json as _json
 from dataclasses import dataclass as _dataclass
 
@@ -13,6 +11,8 @@ from common import (
 	CustomHash as _CustomHash,
 	StaticDataClass as _StaticDataClass,
 )
+
+from drl_typing import *
 
 
 """
@@ -53,18 +53,18 @@ Sec-Fetch-User # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-F
 """
 
 
-class UserAgentHeader(_t.NamedTuple):
+class UserAgentHeader(_NT):
 	"""Base/boilerplate header mocking some real browser."""
 
 	# https://user-agents.net/download?browser=firefox&platform=win8
 
-	user_agent: _t.Optional[str]
-	accept: _t.Optional[str] = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
-	accept_encoding: _t.Optional[str] = 'gzip, deflate, br'
-	accept_language: _t.Optional[str] = 'en-US,en;q=0.5'  # 'ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3'
-	upgrade_insecure: _t.Optional[int] = 1
-	dnt: _t.Optional[int] = 1
-	referer: _t.Optional[str] = 'https://www.google.com/'
+	user_agent: _o_str
+	accept: _o_str = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+	accept_encoding: _o_str = 'gzip, deflate, br'
+	accept_language: _o_str = 'en-US,en;q=0.5'  # 'ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3'
+	upgrade_insecure: _o[int] = 1
+	dnt: _o[int] = 1
+	referer: _o_str = 'https://www.google.com/'
 
 	@property
 	def header(self):
@@ -111,7 +111,7 @@ class Proxy(_CustomHash):
 	active: bool = True
 
 	@property
-	def hash_id(self) -> _t.Tuple[str]:
+	def hash_id(self) -> _tpl[str]:
 		return (self.url, )
 
 
@@ -125,7 +125,7 @@ https://proxylist.geonode.com/api/proxy-list?limit=500&page=1&sort_by=lastChecke
 
 
 class ProxyPool(_StaticDataClass):
-	__proxies: _t.Set[Proxy]
+	__proxies: _set[Proxy]
 
 	@classmethod
 	def _load_from_geonode(cls):

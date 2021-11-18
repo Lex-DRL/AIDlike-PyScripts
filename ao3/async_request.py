@@ -4,13 +4,13 @@
 
 __author__ = 'Lex Darlog (DRL)'
 
-import typing as _t
-
 from time import time as _time
 from random import random as _random
 
 import asyncio as _asyncio
 from aiohttp import ClientSession
+
+from drl_typing import *
 
 
 async def __get_page(
@@ -28,7 +28,7 @@ async def __get_page(
 
 async def __get_page_timed(
 	url: str, session: ClientSession, semaphore: _asyncio.Semaphore,
-	end_time: _t.Union[int, float],
+	end_time: _if,
 	print_urls=False,
 ):
 	async with semaphore:
@@ -44,9 +44,9 @@ async def __get_page_timed(
 
 
 async def __get_all_pages(
-	urls: _t.Iterable[str],
+	urls: _i_str,
 	max_concurrent: int,
-	spread_time: _t.Union[int, float],
+	spread_time: _if,
 	print_urls=False,
 ):
 	urls = tuple(urls)
@@ -91,9 +91,9 @@ async def __get_all_pages(
 
 
 def get_pages(
-	urls: _t.Iterable[str],
+	urls: _i_str,
 	max_concurrent: int = 20,
-	spread_time: _t.Union[int, float] = 13.7,  # about 10 seconds, but not round
+	spread_time: _if = 13.7,  # about 10 seconds, but not round
 	print_urls=False,
 ):
 	"""
@@ -108,7 +108,7 @@ def get_pages(
 	:param print_urls:
 		Print each page url when it's finished loading.
 	"""
-	res: _t.List[_t.Tuple[str, int, str]] = _asyncio.run(__get_all_pages(
+	res: _l[_tpl[str, int, str]] = _asyncio.run(__get_all_pages(
 		urls, max_concurrent, spread_time, print_urls
 	))
 	return res

@@ -4,7 +4,6 @@
 
 __author__ = 'Lex Darlog (DRL)'
 
-import typing as _t
 from pprint import pprint as pp
 
 from bs4 import (
@@ -23,6 +22,8 @@ from common import (
 )
 from ao3.__url import URLs
 from ao3.__paths import Paths
+
+from drl_typing import *
 
 
 class BenchTagSearch(_StaticDataClass):
@@ -103,7 +104,7 @@ Estimate sizes:
 		return cls.__query
 
 	@classmethod
-	def _query_item_sorting_key(cls, args) -> _t.Tuple[str, ...]:
+	def _query_item_sorting_key(cls, args) -> _tpl_str:
 		key, *args = (str(x) for x in args)
 		if key in cls.sort_key_map:
 			# noinspection PyTypeChecker
@@ -137,7 +138,7 @@ Estimate sizes:
 		return cls.__page_urls
 
 	@classmethod
-	def _cache_pages_to_files(cls, pages_content: _t.Iterable[str]):
+	def _cache_pages_to_files(cls, pages_content: _i_str):
 		cache_dir = Paths.benchmark_cache_dir
 		if not cache_dir.exists():
 			cache_dir.mkdir()

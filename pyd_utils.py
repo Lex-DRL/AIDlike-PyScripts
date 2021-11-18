@@ -3,15 +3,13 @@
 
 __author__ = 'Lex Darlog (DRL)'
 
-import typing as _t
-
 from dataclasses import dataclass as _dataclass
 
 from pydantic import (
 	validator as _validator,
 )
 
-T = _t.TypeVar('T')
+from drl_typing import *
 
 
 def v_func(
@@ -79,7 +77,7 @@ class _ValidatorBaseFuncClass:
 # Therefore, define them here as regular functions
 # and re-assign them to class later:
 
-def _if_not_value(default_val: T) -> _t.Callable[[_t.Any], T]:
+def _if_not_value(default_val: _T) -> _c[[_tA], _T]:
 	"""
 	General `IfNot` validator. Uses a specified `default_val`
 	if given value equals to `False`.
@@ -89,7 +87,7 @@ def _if_not_value(default_val: T) -> _t.Callable[[_t.Any], T]:
 	return wrapper
 
 
-def _if_not_value_factory(default_f: _t.Callable[[], T]) -> _t.Callable[[_t.Any], T]:
+def _if_not_value_factory(default_f: _c[[], _T]) -> _c[[_tA], _T]:
 	"""
 	General `IfNot` validator for any complex types. Calls a specified `default_f`
 	factory to create a value if given value equals to `False`.

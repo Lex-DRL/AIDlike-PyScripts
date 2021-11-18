@@ -5,12 +5,11 @@ Very generic stuff shared between modules.
 
 __author__ = 'Lex Darlog (DRL)'
 
-import typing as _t
-
 import abc as _abc
 from dataclasses import dataclass as _dataclass
 from pathlib import Path as _Path
 
+from drl_typing import *
 
 root_dir = _Path(__file__).parent
 
@@ -73,8 +72,8 @@ class TrackingMeta(type):
 
 	def __new__(mcs, *args, **kwargs):
 		cls = super().__new__(mcs, *args, **kwargs)
-		_t_track_set = _t.Set[TrackingMeta]
-		_t_track_hierarchy = _t.Dict[TrackingMeta, _t_track_set]
+		_t_track_set = _set[TrackingMeta]
+		_t_track_hierarchy = _d[TrackingMeta, _t_track_set]
 
 		try:
 			children_dict: _t_track_hierarchy = mcs.__children_by_class
@@ -96,8 +95,8 @@ class TrackingMeta(type):
 
 	@property
 	def _whole_tracking(cls):
-		_t_track_set = _t.Tuple[TrackingMeta, ...]
-		_t_track_hierarchy = _t.Dict[TrackingMeta, _t_track_set]
+		_t_track_set = _tpl[TrackingMeta, ...]
+		_t_track_hierarchy = _d[TrackingMeta, _t_track_set]
 		res: _t_track_hierarchy = {
 			k: tuple(v) for k, v in cls.__children_by_class.items()
 		}
@@ -120,7 +119,7 @@ _byte_kilo_step = 1024.0
 
 
 def human_bytes(
-	size: _t.Union[int, float], size_in_bits=False, space=' ', suffix='B'
+	size: _if, size_in_bits=False, space=' ', suffix='B'
 ):
 	"""Format bytes/bits size in a human-readable form."""
 
@@ -154,7 +153,7 @@ def human_bytes(
 	return f'{format_decimal(size * sign)}*10^{order}{space}{_byte_yobi}{suffix}'
 
 
-def format_thousands(number: _t.Union[int, float, str], spacer="'"):
+def format_thousands(number: _u[_if, str], spacer="'"):
 	"""Format a number, splitting thousands with spacer."""
 
 	number_str = str(number).replace(',', '.').strip()

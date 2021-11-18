@@ -3,14 +3,10 @@
 
 __author__ = 'Lex Darlog (DRL)'
 
-import typing as _t
-
 from enum import *
 from itertools import chain as _chain
 
-
-_t_enum = _t.Type[Enum]
-_t_enum_meta = _t.Type[EnumMeta]
+from drl_typing import *
 
 
 def _enum_call_kwargs(enum_cls: _t_enum):
@@ -68,7 +64,7 @@ def _enum_base_meta(enum_cls: _t_enum) -> _t_enum_meta:
 def extend(*items, **kw_items):
 	"""Decorator which adds extra members to Enum."""
 
-	def decorator(enum_cls: _t_enum):
+	def decorator(enum_cls: _t_enum) -> _t_enum:
 		base_cls = _enum_base(enum_cls)
 
 		joined = dict(items)
@@ -89,7 +85,7 @@ def extend(*items, **kw_items):
 
 def map_all_cases(
 	unknown=False,
-	default: _t.Union[None, Enum, _t.Callable[[_t_enum], _t.Any]] = None,
+	default: _u[None, Enum, _c[[_t_enum], _tA]] = None,
 ):
 	"""
 	Enum decorator which lets querying Enum members with `Enum['member_name']`
@@ -101,14 +97,14 @@ def map_all_cases(
 	:param default:
 		The value to return when no such member is found.
 	"""
-	def default_f_for_unknown(cls: _t_enum_meta):
+	def default_f_for_unknown(cls: _t_enum):
 		return cls.Unknown
 
-	def default_f_from_value(cls: _t_enum_meta):
+	def default_f_from_value(cls: _t_enum):
 		return default
 
-	def decorator(enum_cls_orig: _t_enum):
-		default_f: _t.Callable[[_t_enum_meta], Enum] = (
+	def decorator(enum_cls: _t_enum) -> _t_enum:
+		default_f: _c[[_t_enum], Enum] = (
 			default
 			if callable(default) and not isinstance(default, EnumMeta)
 			else default_f_from_value
@@ -116,7 +112,7 @@ def map_all_cases(
 		if unknown and default is None:
 			default_f = default_f_for_unknown
 
-		class ModifiedMeta(_enum_base_meta(enum_cls_orig)):
+		class ModifiedMeta(_enum_base_meta(enum_cls)):
 			def __members_map_all_keys(cls):
 				try:
 					return cls.__map_all_keys
@@ -129,7 +125,7 @@ def map_all_cases(
 					) for k, v in cls._member_map_.items()
 					if not k.startswith('__')
 				)
-				cls.__map_all_keys: _t.Dict[_t.Any, Enum] = dict(_chain(*all_mappings))
+				cls.__map_all_keys: _d[_tA, Enum] = dict(_chain(*all_mappings))
 				return cls.__map_all_keys
 
 			def __getitem__(cls, key):
@@ -160,20 +156,20 @@ def map_all_cases(
 					return mapping[key]
 				return default_f(cls)
 
-		class ModifiedBaseEnum(_enum_base(enum_cls_orig), metaclass=ModifiedMeta):
+		class ModifiedBaseEnum(_enum_base(enum_cls), metaclass=ModifiedMeta):
 			pass
 
 		joined = dict()
 		if unknown:
 			joined.update(Unknown=-1)
-		for item in enum_cls_orig:
+		for item in enum_cls:
 			joined[item.name] = item.value
 		for k in joined.keys():
 			if k.startswith('__'):
 				joined.pop(k)
 
 		return ModifiedBaseEnum(
-			enum_cls_orig.__name__, joined, **_enum_call_kwargs(enum_cls_orig)
+			enum_cls.__name__, joined, **_enum_call_kwargs(enum_cls)
 		)
 
 	return decorator

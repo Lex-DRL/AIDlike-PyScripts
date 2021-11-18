@@ -4,8 +4,6 @@
 
 __author__ = 'Lex Darlog (DRL)'
 
-import typing as _t
-
 from itertools import islice as _islice
 import json as _json
 from pathlib import Path as _Path
@@ -14,24 +12,27 @@ import warnings as _warnings
 
 from common import StaticDataClass as _StaticDataClass
 
+from drl_typing import *
+
+_t_percent = _o_if
+
+
 module_dir = _Path(__file__).parent
 
-_t_percent = _t.Union[None, int, float]
 
-
-class UserAgentID(_t.NamedTuple):
+class UserAgentID(_NT):
 	user_agent: str
 	system: str = ''
 
 
-class UserAgentFullData(_t.NamedTuple):
+class UserAgentFullData(_NT):
 	user_agent: str
 	system: str = ''
 	percent: _t_percent = None
 
 
-_t_pool = _t.Dict[UserAgentID, _t_percent]
-_t_pool_item = _t.Tuple[UserAgentID, _t_percent]
+_t_pool = _d[UserAgentID, _t_percent]
+_t_pool_item = _tpl[UserAgentID, _t_percent]
 
 
 class UserAgentPool(_StaticDataClass):
@@ -46,7 +47,7 @@ class UserAgentPool(_StaticDataClass):
 	__pool: _t_pool = dict()
 
 	@classmethod
-	def update(cls, items: _t.Iterable[_t_pool_item]):
+	def update(cls, items: _i[_t_pool_item]):
 		cls.__pool.update(items)
 
 	@classmethod
@@ -78,8 +79,8 @@ class UserAgentPool(_StaticDataClass):
 		return key in cls.pool
 
 	@staticmethod
-	def __sorted_items(pool: _t_pool) -> _t.List[_t_pool_item]:
-		def sort_key(item) -> _t.Tuple[bool, _t_percent]:
+	def __sorted_items(pool: _t_pool) -> _l[_t_pool_item]:
+		def sort_key(item) -> _tpl[bool, _t_percent]:
 			percent = item[1]
 			return percent is not None, percent
 
@@ -89,8 +90,8 @@ class UserAgentPool(_StaticDataClass):
 
 	@classmethod
 	def n_most_popular(
-		cls, n: _t.Optional[int] = 20, normalize_percent=False,
-	) -> _t.Tuple[UserAgentFullData, ...]:
+		cls, n: _o[int] = 20, normalize_percent=False,
+	) -> _tpl[UserAgentFullData, ...]:
 		pool = cls.pool()
 		total = len(pool)
 		if n is None:
@@ -116,10 +117,10 @@ class UserAgentPool(_StaticDataClass):
 
 	@classmethod
 	def n_random(
-		cls, n: _t.Optional[int] = 20,
-		n_popular_chosen_from: _t.Optional[int] = None,
+		cls, n: _o[int] = 20,
+		n_popular_chosen_from: _o[int] = None,
 		normalize_percent=False,
-	) -> _t.Tuple[UserAgentFullData, ...]:
+	) -> _tpl[UserAgentFullData, ...]:
 		chosen_from = cls.n_most_popular(n_popular_chosen_from, normalize_percent)
 		total = len(chosen_from)
 		if n > total:

@@ -4,8 +4,6 @@
 
 __author__ = 'Lex Darlog (DRL)'
 
-import typing as _t
-
 from pathlib import Path
 from common import StaticDataClass as _StaticDataClass
 
