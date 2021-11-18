@@ -29,9 +29,9 @@ from common import (
 	CustomHash as _CustomHash,
 	StaticDataClass as _StaticDataClass,
 )
+from scraper._wip_async_request import get_pages as _get_pages_async
 from .__url import URLs
 from .__paths import Paths
-from .async_request import get_pages as _get_pages_async
 
 from drl_typing import *
 
